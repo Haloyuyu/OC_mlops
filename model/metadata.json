@@ -1,0 +1,11 @@
+{
+  "nom": "credit_scoring_lgbm",
+  "alias": "champion",
+  "version": "1",
+  "run_id": "ad36e6ef5e2e42d5bdff11b3ee26f9aa",
+  "tags": {
+    "seuil_metier": "0.080",
+    "ratio_cout_fn_fp": "10:1",
+    "auc_holdout": "0.7915"
+  }
+}

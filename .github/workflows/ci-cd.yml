@@ -1,0 +1,139 @@
+name: CI/CD API scoring crédit
+
+# tests -> construction de l'image Docker (si tests OK) -> déploiement (si image OK, branche master)
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Tests unitaires et d'intégration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-*.txt
+
+      - name: Installation des dépendances
+        run: pip install -r requirements-dev.txt
+
+      - name: Tests (modèle + API)
+        env:
+          GRADIO_ANALYTICS_ENABLED: "False"
+        run: python -m pytest tests -v --junitxml=rapport-tests.xml
+
+      - name: Publication du rapport de tests
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rapport-tests
+          path: rapport-tests.xml
+
+  build:
+    name: Construction de l'image Docker
+    needs: tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.image.outputs.nom }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Nom de l'image (GHCR exige des minuscules)
+        id: image
+        run: echo "nom=ghcr.io/${GITHUB_REPOSITORY,,}-api" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Construction
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: ${{ steps.image.outputs.nom }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Vérification de l'image construite
+        run: |
+          docker run -d --name api-test -p 8000:8000 "${{ steps.image.outputs.nom }}:${{ github.sha }}"
+          python3 scripts/smoke_test.py http://localhost:8000
+
+      - name: Logs du conteneur
+        if: failure()
+        run: docker logs api-test
+
+      - name: Connexion au GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publication de l'image
+        if: github.event_name != 'pull_request'
+        run: |
+          IMAGE="${{ steps.image.outputs.nom }}"
+          docker tag "$IMAGE:${{ github.sha }}" "$IMAGE:latest"
+          docker push "$IMAGE:${{ github.sha }}"
+          docker push "$IMAGE:latest"
+
+  deploy:
+    name: Déploiement
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    environment: production
+    env:
+      IMAGE: ${{ needs.build.outputs.image }}:${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Connexion au GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Environnement cible simulé : l'hôte du runner joue le rôle du serveur de
+      # production. L'image est tirée du registry, comme sur un vrai serveur.
+      - name: Récupération de l'image depuis le registry
+        run: docker pull "$IMAGE"
+
+      - name: Lancement du conteneur
+        run: docker run -d --name api-scoring --restart unless-stopped -p 8000:8000 "$IMAGE"
+
+      - name: Test de fumée de l'API déployée
+        run: python3 scripts/smoke_test.py http://localhost:8000
+
+      - name: Logs du conteneur
+        if: always()
+        run: docker logs api-scoring
+
+      - name: Résumé du déploiement
+        run: |
+          {
+            echo "## API de scoring déployée"
+            echo ""
+            echo "- Image : \`$IMAGE\`"
+            echo "- Santé : \`$(curl -s http://localhost:8000/health)\`"
+            echo "- Endpoints : \`POST /predict\`, \`GET /model\`, \`GET /docs\`, interface Gradio sur \`/ui\`"
+          } >> "$GITHUB_STEP_SUMMARY"
