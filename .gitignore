@@ -1,0 +1,6 @@
+.venv
+.claude
+.vscode
+**/__pycache__/
+data/
+mlartifacts/
