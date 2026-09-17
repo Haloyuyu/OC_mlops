@@ -1,0 +1,12 @@
+# Dépendances d'exécution de l'API (image Docker et CI).
+# Versions du modèle identiques à celles de l'entraînement (model/credit_scoring_lgbm/requirements.txt).
+mlflow-skinny==3.14.0
+lightgbm==4.7.0
+scikit-learn==1.9.0
+pandas==2.3.3
+numpy==2.5.1
+cloudpickle==3.1.2
+fastapi==0.141.1
+pydantic==2.13.5
+uvicorn==0.53.0
+gradio==6.27.0
