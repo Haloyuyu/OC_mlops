@@ -15,7 +15,7 @@ servi avec MLFlow.
 | `presentation.pptx` | Présentation de synthèse du projet |
 | `api/` | API FastAPI (`/predict`, `/model`, `/health`) + interface Gradio (`/ui`) |
 | `model/` | Modèle `@champion` exporté du registry + 20 clients d'exemple du jeu test |
-| `scripts/exporter_modele.py` | Export du modèle champion du registry vers `model/` |
+| `scripts/export_model.py` | Export du modèle champion du registry vers `model/` |
 | `tests/` | Tests unitaires (modèle, logique de scoring) et d'intégration (routes HTTP) |
 | `Dockerfile` | Image Docker de l'API |
 | `.github/workflows/ci-cd.yml` | Pipeline CI/CD : tests → image Docker → déploiement |
@@ -58,7 +58,7 @@ accès au serveur MLFlow local. Après un nouvel enregistrement au registry :
 
 ```bash
 poetry run mlflow server --backend-store-uri sqlite:///mlflow.db --port 5000   # terminal 1
-poetry run python scripts/exporter_modele.py                                   # terminal 2
+poetry run python scripts/export_model.py                                   # terminal 2
 ```
 
 ### Lancer l'API

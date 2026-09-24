@@ -5,30 +5,30 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from api.scoring import ModeleScoring, charger_clients_exemple, client_en_dict
+from api.scoring import ScoringModel, client_to_dict, load_example_clients
 
-DOSSIER_MODELE = Path(__file__).resolve().parent.parent / "model"
-
-
-@pytest.fixture(scope="session")
-def modele():
-    return ModeleScoring(DOSSIER_MODELE)
+MODEL_DIR = Path(__file__).resolve().parent.parent / "model"
 
 
 @pytest.fixture(scope="session")
-def clients_exemple():
-    return charger_clients_exemple(DOSSIER_MODELE)
+def model():
+    return ScoringModel(MODEL_DIR)
+
+
+@pytest.fixture(scope="session")
+def example_clients():
+    return load_example_clients(MODEL_DIR)
 
 
 @pytest.fixture
-def client_complet(clients_exemple):
-    return client_en_dict(clients_exemple.iloc[0])
+def complete_client(example_clients):
+    return client_to_dict(example_clients.iloc[0])
 
 
 @pytest.fixture(scope="session")
-def clients_train():
+def train_clients():
     """5 clients du train enregistrés avec le modèle (TARGET connue : le 1er est un défaut)."""
-    with open(DOSSIER_MODELE / "credit_scoring_lgbm" / "serving_input_example.json", encoding="utf-8") as f:
+    with open(MODEL_DIR / "credit_scoring_lgbm" / "serving_input_example.json", encoding="utf-8") as f:
         split = json.load(f)["dataframe_split"]
     return pd.DataFrame(split["data"], columns=split["columns"])
 

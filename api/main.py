@@ -12,11 +12,11 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from api.interface import creer_interface
-from api.scoring import FeaturesInconnues, ModeleScoring, charger_clients_exemple
+from api.interface import create_interface
+from api.scoring import ScoringModel, UnknownFeatures, load_example_clients
 
-modele = ModeleScoring()
-clients_exemple = charger_clients_exemple()
+model = ScoringModel()
+example_clients = load_example_clients()
 
 
 class Client(BaseModel):
@@ -38,7 +38,7 @@ class Prediction(BaseModel):
     features_renseignees: int
 
 
-class InfosModele(BaseModel):
+class ModelInfo(BaseModel):
     nom: str
     version: str
     alias: str
@@ -54,32 +54,32 @@ app = FastAPI(
 
 
 @app.get("/", include_in_schema=False)
-def accueil():
+def home():
     return RedirectResponse("/ui")
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "modele": modele.metadonnees["nom"], "version": modele.metadonnees["version"]}
+    return {"status": "ok", "modele": model.metadata["nom"], "version": model.metadata["version"]}
 
 
-@app.get("/model", response_model=InfosModele)
-def infos_modele():
-    return InfosModele(
-        nom=modele.metadonnees["nom"],
-        version=modele.metadonnees["version"],
-        alias=modele.metadonnees["alias"],
-        seuil=modele.seuil,
-        features=modele.features,
+@app.get("/model", response_model=ModelInfo)
+def model_info():
+    return ModelInfo(
+        nom=model.metadata["nom"],
+        version=model.metadata["version"],
+        alias=model.metadata["alias"],
+        seuil=model.threshold,
+        features=model.features,
     )
 
 
 @app.post("/predict", response_model=Prediction)
 def predict(client: Client):
     try:
-        return modele.predire(client.features)
-    except FeaturesInconnues as erreur:
-        raise HTTPException(status_code=422, detail={"message": str(erreur), "features_inconnues": erreur.noms})
+        return model.predict(client.features)
+    except UnknownFeatures as error:
+        raise HTTPException(status_code=422, detail={"message": str(error), "features_inconnues": error.names})
 
 
-app = gr.mount_gradio_app(app, creer_interface(modele, clients_exemple), path="/ui")
+app = gr.mount_gradio_app(app, create_interface(model, example_clients), path="/ui")

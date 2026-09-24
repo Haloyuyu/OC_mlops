@@ -4,43 +4,43 @@ import pytest
 
 
 def test_health(api):
-    reponse = api.get("/health")
-    assert reponse.status_code == 200
-    assert reponse.json()["status"] == "ok"
+    response = api.get("/health")
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
 
 
-def test_infos_modele(api, modele):
-    reponse = api.get("/model")
-    assert reponse.status_code == 200
-    corps = reponse.json()
-    assert corps["alias"] == "champion"
-    assert corps["seuil"] == modele.seuil
-    assert corps["features"] == modele.features
+def test_model_info(api, model):
+    response = api.get("/model")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["alias"] == "champion"
+    assert body["seuil"] == model.threshold
+    assert body["features"] == model.features
 
 
-def test_predict_client_complet(api, modele, client_complet):
-    reponse = api.post("/predict", json={"features": client_complet})
-    assert reponse.status_code == 200
-    corps = reponse.json()
-    assert set(corps) == {"probabilite_defaut", "decision", "libelle_decision", "seuil", "features_renseignees"}
+def test_predict_complete_client(api, model, complete_client):
+    response = api.post("/predict", json={"features": complete_client})
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {"probabilite_defaut", "decision", "libelle_decision", "seuil", "features_renseignees"}
     # l'API renvoie exactement ce que calcule le modèle
-    assert corps == pytest.approx(modele.predire(client_complet))
+    assert body == pytest.approx(model.predict(complete_client))
 
 
-def test_predict_client_partiel(api):
-    reponse = api.post("/predict", json={"features": {"EXT_SOURCE_2": 0.5, "DAYS_BIRTH": -12000}})
-    assert reponse.status_code == 200
-    assert reponse.json()["features_renseignees"] == 2
+def test_predict_partial_client(api):
+    response = api.post("/predict", json={"features": {"EXT_SOURCE_2": 0.5, "DAYS_BIRTH": -12000}})
+    assert response.status_code == 200
+    assert response.json()["features_renseignees"] == 2
 
 
-def test_predict_feature_inconnue(api):
-    reponse = api.post("/predict", json={"features": {"EXT_SOURCE_2": 0.5, "INCONNUE": 1}})
-    assert reponse.status_code == 422
-    assert reponse.json()["detail"]["features_inconnues"] == ["INCONNUE"]
+def test_predict_unknown_feature(api):
+    response = api.post("/predict", json={"features": {"EXT_SOURCE_2": 0.5, "INCONNUE": 1}})
+    assert response.status_code == 422
+    assert response.json()["detail"]["features_inconnues"] == ["INCONNUE"]
 
 
 @pytest.mark.parametrize(
-    "corps",
+    "body",
     [
         {},
         {"features": {}},
@@ -49,18 +49,18 @@ def test_predict_feature_inconnue(api):
     ],
     ids=["sans_features", "features_vides", "valeur_texte", "liste_au_lieu_de_dict"],
 )
-def test_predict_entree_invalide(api, corps):
-    assert api.post("/predict", json=corps).status_code == 422
+def test_predict_invalid_input(api, body):
+    assert api.post("/predict", json=body).status_code == 422
 
 
-def test_documentation_openapi(api):
-    reponse = api.get("/openapi.json")
-    assert reponse.status_code == 200
-    assert "/predict" in reponse.json()["paths"]
+def test_openapi_documentation(api):
+    response = api.get("/openapi.json")
+    assert response.status_code == 200
+    assert "/predict" in response.json()["paths"]
 
 
-def test_interface_gradio_montee(api):
+def test_gradio_interface_is_mounted(api):
     assert api.get("/ui/").status_code == 200
-    reponse = api.get("/", follow_redirects=False)
-    assert reponse.status_code in (302, 307)
-    assert reponse.headers["location"] == "/ui"
+    response = api.get("/", follow_redirects=False)
+    assert response.status_code in (302, 307)
+    assert response.headers["location"] == "/ui"

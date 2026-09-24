@@ -10,7 +10,7 @@ Prérequis :
 
 Puis :
 
-    poetry run python scripts/exporter_modele.py
+    poetry run python scripts/export_model.py
 """
 
 import json
@@ -24,58 +24,58 @@ from mlflow import MlflowClient
 from mlflow.models import Model
 
 TRACKING_URI = "http://127.0.0.1:5000"
-NOM_MODELE = "credit_scoring_lgbm"
+MODEL_NAME = "credit_scoring_lgbm"
 ALIAS = "champion"
 
-RACINE = Path(__file__).resolve().parent.parent
-DOSSIER_SORTIE = RACINE / "model"
-DOSSIER_MODELE = DOSSIER_SORTIE / NOM_MODELE
-DONNEES = RACINE / "data" / "processed_data.csv"
-N_CLIENTS_EXEMPLE = 20
+ROOT = Path(__file__).resolve().parent.parent
+OUTPUT_DIR = ROOT / "model"
+MODEL_DIR = OUTPUT_DIR / MODEL_NAME
+DATA = ROOT / "data" / "processed_data.csv"
+N_EXAMPLE_CLIENTS = 20
 
 
-def exporter_modele(client):
+def export_model(client):
     """Télécharge les artefacts de la version @champion et écrit ses métadonnées."""
-    version = client.get_model_version_by_alias(NOM_MODELE, ALIAS)
-    if DOSSIER_MODELE.exists():
-        shutil.rmtree(DOSSIER_MODELE)
-    DOSSIER_SORTIE.mkdir(exist_ok=True)
+    version = client.get_model_version_by_alias(MODEL_NAME, ALIAS)
+    if MODEL_DIR.exists():
+        shutil.rmtree(MODEL_DIR)
+    OUTPUT_DIR.mkdir(exist_ok=True)
     mlflow.artifacts.download_artifacts(
-        artifact_uri=f"models:/{NOM_MODELE}@{ALIAS}", dst_path=str(DOSSIER_MODELE)
+        artifact_uri=f"models:/{MODEL_NAME}@{ALIAS}", dst_path=str(MODEL_DIR)
     )
-    metadonnees = {
-        "nom": NOM_MODELE,
+    metadata = {
+        "nom": MODEL_NAME,
         "alias": ALIAS,
         "version": version.version,
         "run_id": version.run_id,
         "tags": version.tags,
     }
-    with open(DOSSIER_SORTIE / "metadata.json", "w", encoding="utf-8") as f:
-        json.dump(metadonnees, f, indent=2, ensure_ascii=False)
-    print(f"Modèle {NOM_MODELE} v{version.version} exporté dans {DOSSIER_MODELE}")
+    with open(OUTPUT_DIR / "metadata.json", "w", encoding="utf-8") as f:
+        json.dump(metadata, f, indent=2, ensure_ascii=False)
+    print(f"Modèle {MODEL_NAME} v{version.version} exporté dans {MODEL_DIR}")
 
 
-def exporter_clients_exemple(n=N_CLIENTS_EXEMPLE):
+def export_example_clients(n=N_EXAMPLE_CLIENTS):
     """Extrait n clients du jeu test (TARGET inconnue), restreints aux features du modèle."""
-    features = Model.load(str(DOSSIER_MODELE)).get_input_schema().input_names()
-    morceaux = []
-    for morceau in pd.read_csv(DONNEES, chunksize=50_000):
+    features = Model.load(str(MODEL_DIR)).get_input_schema().input_names()
+    chunks = []
+    for chunk in pd.read_csv(DATA, chunksize=50_000):
         # même nettoyage des noms de colonnes qu'à l'entraînement (modelisation.ipynb)
-        morceau.columns = [re.sub(r"[^A-Za-z0-9_]+", "_", c) for c in morceau.columns]
-        morceaux.append(morceau.loc[morceau["TARGET"].isna()])
-        if sum(len(m) for m in morceaux) >= n:
+        chunk.columns = [re.sub(r"[^A-Za-z0-9_]+", "_", c) for c in chunk.columns]
+        chunks.append(chunk.loc[chunk["TARGET"].isna()])
+        if sum(len(c) for c in chunks) >= n:
             break
-    clients = pd.concat(morceaux).head(n)
+    clients = pd.concat(chunks).head(n)
     clients["SK_ID_CURR"] = clients["SK_ID_CURR"].astype(int)
     clients = clients.set_index("SK_ID_CURR")[features].astype("float64")
-    clients.to_csv(DOSSIER_SORTIE / "clients_exemple.csv")
+    clients.to_csv(OUTPUT_DIR / "clients_exemple.csv")
     print(f"{len(clients)} clients d'exemple exportés ({clients.shape[1]} features)")
 
 
 def main():
     mlflow.set_tracking_uri(TRACKING_URI)
-    exporter_modele(MlflowClient())
-    exporter_clients_exemple()
+    export_model(MlflowClient())
+    export_example_clients()
 
 
 if __name__ == "__main__":

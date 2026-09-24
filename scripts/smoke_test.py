@@ -13,50 +13,50 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-CLIENTS_EXEMPLE = Path(__file__).resolve().parent.parent / "model" / "clients_exemple.csv"
+EXAMPLE_CLIENTS = Path(__file__).resolve().parent.parent / "model" / "clients_exemple.csv"
 
 
-def requete(url, corps=None):
-    donnees = None if corps is None else json.dumps(corps).encode()
-    req = urllib.request.Request(url, data=donnees, headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=30) as reponse:
-        return reponse.status, reponse.read().decode()
+def call_api(url, body=None):
+    data = None if body is None else json.dumps(body).encode()
+    request = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(request, timeout=30) as response:
+        return response.status, response.read().decode()
 
 
-def attendre_api(url, delai_max=120):
-    debut = time.monotonic()
-    while time.monotonic() - debut < delai_max:
+def wait_for_api(url, timeout=120):
+    start = time.monotonic()
+    while time.monotonic() - start < timeout:
         try:
-            if requete(f"{url}/health")[0] == 200:
+            if call_api(f"{url}/health")[0] == 200:
                 return
         except (urllib.error.URLError, ConnectionError):
             pass
         time.sleep(2)
-    raise TimeoutError(f"L'API {url} ne répond pas après {delai_max} s")
+    raise TimeoutError(f"L'API {url} ne répond pas après {timeout} s")
 
 
-def premier_client():
-    with open(CLIENTS_EXEMPLE, encoding="utf-8") as f:
-        ligne = next(csv.DictReader(f))
-    ligne.pop("SK_ID_CURR")
-    return {nom: (float(valeur) if valeur else None) for nom, valeur in ligne.items()}
+def first_client():
+    with open(EXAMPLE_CLIENTS, encoding="utf-8") as f:
+        row = next(csv.DictReader(f))
+    row.pop("SK_ID_CURR")
+    return {name: (float(value) if value else None) for name, value in row.items()}
 
 
 def main(url):
     url = url.rstrip("/")
-    attendre_api(url)
+    wait_for_api(url)
 
-    statut, corps = requete(f"{url}/health")
-    print(f"GET  /health  -> {statut} {corps}")
+    status, body = call_api(f"{url}/health")
+    print(f"GET  /health  -> {status} {body}")
 
-    statut, corps = requete(f"{url}/predict", {"features": premier_client()})
-    prediction = json.loads(corps)
-    print(f"POST /predict -> {statut} {prediction}")
-    assert statut == 200 and 0 <= prediction["probabilite_defaut"] <= 1
+    status, body = call_api(f"{url}/predict", {"features": first_client()})
+    prediction = json.loads(body)
+    print(f"POST /predict -> {status} {prediction}")
+    assert status == 200 and 0 <= prediction["probabilite_defaut"] <= 1
 
-    statut, _ = requete(f"{url}/ui/")
-    print(f"GET  /ui/     -> {statut}")
-    assert statut == 200
+    status, _ = call_api(f"{url}/ui/")
+    print(f"GET  /ui/     -> {status}")
+    assert status == 200
 
     print("Déploiement vérifié.")
 
