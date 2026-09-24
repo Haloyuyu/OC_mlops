@@ -5,16 +5,21 @@
 Documentation interactive : http://localhost:8000/docs
 """
 
+import logging
 from typing import Literal
 
 import gradio as gr
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import RedirectResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from api.interface import create_interface
-from api.scoring import ScoringModel, UnknownFeatures, load_example_clients
+from api.scoring import OutOfBoundsValues, ScoringModel, UnknownFeatures, load_example_clients
 
+logger = logging.getLogger("api.scoring")
+
+# Le modèle est chargé une seule fois, au démarrage : le charger à chaque requête
+# ajouterait ~2,5 s et autant de copies en mémoire.
 model = ScoringModel()
 example_clients = load_example_clients()
 
@@ -74,12 +79,41 @@ def model_info():
     )
 
 
-@app.post("/predict", response_model=Prediction)
+ERREURS_PREDICT = {
+    422: {
+        "description": "Entrée refusée : corps de requête invalide, feature inconnue du "
+                       "modèle, ou valeur hors des bornes métier.",
+        "content": {"application/json": {"examples": {
+            "feature_inconnue": {"value": {"detail": {
+                "message": "Features inconnues du modèle : REVENU_IMAGINAIRE",
+                "features_inconnues": ["REVENU_IMAGINAIRE"]}}},
+            "valeur_hors_bornes": {"value": {"detail": {
+                "message": "Valeurs hors bornes : AMT_INCOME_TOTAL = 0 hors des bornes [1, 1e+09]",
+                "features_hors_bornes": ["AMT_INCOME_TOTAL = 0 hors des bornes [1, 1e+09]"]}}},
+        }}},
+    },
+    500: {"description": "Erreur interne du service de scoring."},
+}
+
+
+@app.post("/predict", response_model=Prediction, responses=ERREURS_PREDICT)
 def predict(client: Client):
     try:
         return model.predict(client.features)
     except UnknownFeatures as error:
         raise HTTPException(status_code=422, detail={"message": str(error), "features_inconnues": error.names})
+    except OutOfBoundsValues as error:
+        raise HTTPException(status_code=422, detail={"message": str(error), "features_hors_bornes": error.details})
+
+
+@app.exception_handler(Exception)
+async def erreur_inattendue(request: Request, exc: Exception):
+    """Toute erreur non prévue devient une 500 explicite, tracée côté serveur.
+
+    Sans ce garde-fou, une exception du modèle remonterait en page d'erreur brute.
+    """
+    logger.exception("Erreur inattendue sur %s", request.url.path)
+    return JSONResponse(status_code=500, content={"detail": "Erreur interne du service de scoring."})
 
 
 app = gr.mount_gradio_app(app, create_interface(model, example_clients), path="/ui")

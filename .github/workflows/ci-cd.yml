@@ -113,16 +113,33 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # L'API consomme ~260 Mo de RSS et ~5 Go de disque avec l'image : on refuse de
+      # déployer sur un hôte qui ne peut pas la tenir, plutôt que de la voir tomber
+      # sous charge (OOM) une fois en service.
+      - name: Vérification des ressources de l'environnement cible
+        run: |
+          echo "CPU : $(nproc) | $(free -h | awk '/^Mem:/{print "RAM totale " $2 ", disponible " $7}')"
+          df -h / | tail -1
+          MEMOIRE_MO=$(free -m | awk '/^Mem:/{print $7}')
+          DISQUE_MO=$(df -m --output=avail / | tail -1)
+          test "$MEMOIRE_MO" -ge 1024 || { echo "Mémoire disponible insuffisante : ${MEMOIRE_MO} Mo < 1024 Mo"; exit 1; }
+          test "$DISQUE_MO" -ge 8192 || { echo "Espace disque insuffisant : ${DISQUE_MO} Mo < 8192 Mo"; exit 1; }
+
       # Environnement cible simulé : l'hôte du runner joue le rôle du serveur de
       # production. L'image est tirée du registry, comme sur un vrai serveur.
       - name: Récupération de l'image depuis le registry
         run: docker pull "$IMAGE"
 
       - name: Lancement du conteneur
-        run: docker run -d --name api-scoring --restart unless-stopped -p 8000:8000 "$IMAGE"
+        run: |
+          docker run -d --name api-scoring --restart unless-stopped \
+            --memory=1g --cpus=1 -p 8000:8000 "$IMAGE"
 
       - name: Test de fumée de l'API déployée
         run: python3 scripts/smoke_test.py http://localhost:8000
+
+      - name: Consommation réelle du conteneur
+        run: docker stats --no-stream api-scoring
 
       - name: Logs du conteneur
         if: always()

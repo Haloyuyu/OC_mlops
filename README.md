@@ -82,15 +82,46 @@ curl -X POST http://localhost:8000/predict -H "Content-Type: application/json"  
 #  "seuil": 0.08, "features_renseignees": 3}
 ```
 
-Une feature absente ou `null` est une valeur manquante (gérée nativement par LightGBM) ;
-une feature inconnue du modèle renvoie une erreur 422. La liste des 795 features est
-donnée par `GET /model`.
+### Validation des entrées et gestion des erreurs
+
+| Cas | Réponse |
+|---|---|
+| Feature absente ou `null` | Valeur manquante, gérée nativement par LightGBM comme à l'entraînement |
+| Feature inconnue du modèle | `422` + `features_inconnues` |
+| Valeur hors bornes métier (âge négatif, revenu nul, `EXT_SOURCE` > 1…) | `422` + `features_hors_bornes` |
+| Type incorrect (texte au lieu d'un nombre), `features` vide ou absent | `422` (validation Pydantic) |
+| Panne imprévue du modèle | `500` + message JSON, trace côté serveur |
+
+Les bornes métier (`FEATURE_BOUNDS` dans [api/scoring.py](api/scoring.py)) ne portent que sur
+les variables issues directement du dossier client, avec une marge sur les valeurs observées
+dans les 307 511 dossiers d'entraînement : les ~780 autres features sont des agrégats
+calculés, dont la plage n'est pas un contrat métier. Les cas d'erreur sont documentés dans
+Swagger (`GET /docs`) ; la liste des 795 features est donnée par `GET /model`.
+
+### Ressources et performances
+
+Le modèle est chargé **une seule fois au démarrage** (module `api.main`), jamais par requête :
+un chargement coûte environ 2,5 s. Mesures sur l'API en fonctionnement, avec le modèle
+champion et les 795 features :
+
+| | Mesure |
+|---|---|
+| Mémoire (RSS), stable après 150 requêtes | ~260 Mo |
+| Latence moyenne par prédiction | ~45 ms |
+| Image Docker | ~5 Go de disque (LightGBM, scikit-learn, pandas, Gradio) |
+
+Le conteneur est lancé avec `--memory=1g --cpus=1`, et l'étape de déploiement refuse un hôte
+offrant moins de 1 Go de RAM disponible ou 8 Go de disque.
 
 ### Tests
 
 ```bash
 pytest
 ```
+
+60 tests : chargement du modèle champion, cohérence de la décision avec le seuil métier,
+valeurs manquantes, valeurs aberrantes, types incorrects, routes HTTP, documentation OpenAPI,
+non-rechargement du modèle entre deux requêtes.
 
 ### Pipeline CI/CD (GitHub Actions)
 
@@ -101,8 +132,13 @@ pytest
    conteneur et test de fumée, puis publication sur GitHub Container Registry
    (`ghcr.io/<owner>/<repo>-api`, tags `<sha>` et `latest`).
 3. **Déploiement** (si l'image est publiée) : environnement `production` **simulé** sur
-   le runner, qui tire l'image depuis le registry, lance le conteneur et vérifie
-   `/health`, `/predict` et `/ui` (`scripts/smoke_test.py`).
+   le runner, qui vérifie d'abord les ressources de l'hôte, tire l'image depuis le
+   registry, lance le conteneur et contrôle `/health`, `/predict` et `/ui`
+   (`scripts/smoke_test.py`).
 
 Sur une pull request, les tests et la construction de l'image s'exécutent, sans
 publication ni déploiement.
+
+Aucun identifiant n'est écrit dans le dépôt : l'authentification au registry utilise le
+secret `GITHUB_TOKEN` fourni par GitHub Actions, et chaque job ne demande que les
+permissions dont il a besoin (`packages: write` au build, `packages: read` au déploiement).

@@ -4,7 +4,7 @@ import math
 
 import pytest
 
-from api.scoring import UnknownFeatures, client_to_dict
+from api.scoring import FEATURE_BOUNDS, OutOfBoundsValues, UnknownFeatures, client_to_dict
 
 
 def test_exported_model_is_the_champion(model):
@@ -73,6 +73,53 @@ def test_unknown_feature_is_rejected(model, complete_client):
     with pytest.raises(UnknownFeatures) as error:
         model.predict({**complete_client, "REVENU_IMAGINAIRE": 1.0})
     assert error.value.names == ["REVENU_IMAGINAIRE"]
+
+
+@pytest.mark.parametrize(
+    ("feature", "value"),
+    [
+        ("DAYS_BIRTH", 1825.0),  # date de naissance dans le futur : âge de -5 ans
+        ("DAYS_BIRTH", -1825.0),  # âge de 5 ans : en dessous de la majorité
+        ("AMT_INCOME_TOTAL", 0.0),  # revenu nul : impossible dans les 307 511 dossiers
+        ("AMT_INCOME_TOTAL", -30000.0),
+        ("AMT_CREDIT", 0.0),
+        ("EXT_SOURCE_2", 1.5),  # score externe normalisé, donc borné à 1
+        ("EXT_SOURCE_3", -0.2),
+        ("CNT_CHILDREN", -1.0),
+        ("DAYS_EMPLOYED", 365243.0),  # anomalie Home Credit, remplacée par NaN au préprocessing
+    ],
+)
+def test_out_of_bounds_value_is_rejected(model, complete_client, feature, value):
+    with pytest.raises(OutOfBoundsValues) as error:
+        model.predict({**complete_client, feature: value})
+    assert feature in error.value.details[0]
+
+
+def test_bounds_report_every_faulty_feature(model, complete_client):
+    aberrant = {**complete_client, "AMT_INCOME_TOTAL": 0.0, "EXT_SOURCE_1": 42.0}
+    with pytest.raises(OutOfBoundsValues) as error:
+        model.predict(aberrant)
+    assert [nom for nom, *_ in error.value.faults] == ["AMT_INCOME_TOTAL", "EXT_SOURCE_1"]
+
+
+@pytest.mark.parametrize("feature", sorted(FEATURE_BOUNDS))
+def test_bounds_accept_their_own_limits(model, complete_client, feature):
+    low, high = FEATURE_BOUNDS[feature]
+    for limite in (low, high):
+        assert model.predict({**complete_client, feature: limite})["decision"] in (0, 1)
+
+
+def test_engineered_features_are_not_bounded(model, complete_client):
+    # seules les variables du dossier client ont des bornes métier ; les agrégats
+    # calculés (ici une somme de montants) ne doivent pas être contraints
+    assert "BURO_AMT_CREDIT_SUM_MAX" not in FEATURE_BOUNDS
+    result = model.predict({**complete_client, "BURO_AMT_CREDIT_SUM_MAX": 5e8})
+    assert 0 <= result["probabilite_defaut"] <= 1
+
+
+def test_missing_bounded_feature_is_allowed(model):
+    # une valeur manquante n'est pas une valeur aberrante : elle reste acceptée
+    assert model.predict({"AMT_INCOME_TOTAL": None, "EXT_SOURCE_2": 0.5})["features_renseignees"] == 1
 
 
 def test_score_reacts_to_external_sources(model, complete_client):

@@ -4,7 +4,7 @@ import json
 
 import gradio as gr
 
-from api.scoring import UnknownFeatures, client_to_dict
+from api.scoring import client_to_dict
 
 # Les 7 features les plus utilisées par le LightGBM champion (feature_importances_) :
 # ce sont celles qu'un chargé de clientèle a intérêt à pouvoir faire varier.
@@ -37,19 +37,30 @@ def create_interface(model, example_clients):
         row = example_clients.loc[int(sk_id)]
         return [None if row.isna()[name] else float(row[name]) for name in KEY_FEATURES]
 
+    def score(features):
+        """Un seul point d'entrée pour les deux onglets, erreurs métier comprises.
+
+        `UnknownFeatures` et `OutOfBoundsValues` héritent de `ValueError` : une saisie
+        aberrante s'affiche comme un message, pas comme une erreur technique Gradio.
+        """
+        try:
+            return format_result(model.predict(features))
+        except (ValueError, TypeError) as error:
+            return f"⚠️ Entrée invalide : {error}"
+
     def score_client(sk_id, *key_values):
         features = client_to_dict(example_clients.loc[int(sk_id)])
         features.update(dict(zip(KEY_FEATURES, key_values)))
-        return format_result(model.predict(features))
+        return score(features)
 
     def score_json(text):
         try:
             features = json.loads(text)
-            if not isinstance(features, dict):
-                raise ValueError("le JSON doit être un objet {feature: valeur}")
-            return format_result(model.predict(features))
-        except (ValueError, TypeError, UnknownFeatures) as error:
-            return f"⚠️ Entrée invalide : {error}"
+        except json.JSONDecodeError as error:
+            return f"⚠️ JSON invalide : {error}"
+        if not isinstance(features, dict):
+            return "⚠️ Entrée invalide : le JSON doit être un objet {feature: valeur}"
+        return score(features)
 
     ids = [str(i) for i in example_clients.index]
     version = model.metadata
