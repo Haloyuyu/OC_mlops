@@ -9,12 +9,13 @@ import logging
 from typing import Literal
 
 import gradio as gr
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from api.interface import create_interface
 from api.scoring import OutOfBoundsValues, ScoringModel, UnknownFeatures, load_example_clients
+from api.security import API_KEY, HEADER_NAME, UI_USERNAME, log_key_status, require_api_key
 
 logger = logging.getLogger("api.scoring")
 
@@ -53,9 +54,17 @@ class ModelInfo(BaseModel):
 
 app = FastAPI(
     title="API de scoring crédit — Prêt à dépenser",
-    description="Probabilité de défaut et décision d'octroi au seuil métier du modèle champion.",
+    description=(
+        "Probabilité de défaut et décision d'octroi au seuil métier du modèle champion.\n\n"
+        f"Les routes de scoring exigent la clé d'API dans l'en-tête `{HEADER_NAME}` "
+        "(bouton **Authorize** ci-dessus). Seul `/health` reste public."
+    ),
     version="1.0.0",
 )
+
+log_key_status()
+
+ERREUR_AUTH = {401: {"description": f"Clé d'API absente ou invalide (en-tête {HEADER_NAME})."}}
 
 
 @app.get("/", include_in_schema=False)
@@ -65,10 +74,12 @@ def home():
 
 @app.get("/health")
 def health():
+    """Sonde de vie : volontairement publique, car utilisée par Docker et le pipeline."""
     return {"status": "ok", "modele": model.metadata["nom"], "version": model.metadata["version"]}
 
 
-@app.get("/model", response_model=ModelInfo)
+@app.get("/model", response_model=ModelInfo, responses=ERREUR_AUTH,
+         dependencies=[Depends(require_api_key)])
 def model_info():
     return ModelInfo(
         nom=model.metadata["nom"],
@@ -93,10 +104,12 @@ ERREURS_PREDICT = {
         }}},
     },
     500: {"description": "Erreur interne du service de scoring."},
+    **ERREUR_AUTH,
 }
 
 
-@app.post("/predict", response_model=Prediction, responses=ERREURS_PREDICT)
+@app.post("/predict", response_model=Prediction, responses=ERREURS_PREDICT,
+          dependencies=[Depends(require_api_key)])
 def predict(client: Client):
     try:
         return model.predict(client.features)
@@ -116,4 +129,12 @@ async def erreur_inattendue(request: Request, exc: Exception):
     return JSONResponse(status_code=500, content={"detail": "Erreur interne du service de scoring."})
 
 
-app = gr.mount_gradio_app(app, create_interface(model, example_clients), path="/ui")
+# L'interface appelle le modèle en interne, sans passer par REST : sans ce formulaire
+# de connexion, /ui contournerait l'authentification des routes de scoring.
+app = gr.mount_gradio_app(
+    app,
+    create_interface(model, example_clients),
+    path="/ui",
+    auth=(UI_USERNAME, API_KEY),
+    auth_message=f"Utilisateur « {UI_USERNAME} », mot de passe = la clé d'API.",
+)
