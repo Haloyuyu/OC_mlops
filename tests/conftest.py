@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 import pandas as pd
@@ -8,6 +9,11 @@ from fastapi.testclient import TestClient
 from api.scoring import ScoringModel, client_to_dict, load_example_clients
 
 MODEL_DIR = Path(__file__).resolve().parent.parent / "model"
+
+# Clé fixée avant tout import de `api.main` / `api.security`, qui lisent l'environnement
+# au chargement. Sans cela, la clé serait générée aléatoirement et inconnue des tests.
+API_KEY = "cle-de-test-pytest"
+os.environ["API_KEY"] = API_KEY
 
 
 @pytest.fixture(scope="session")
@@ -35,6 +41,16 @@ def train_clients():
 
 @pytest.fixture(scope="session")
 def api():
+    """Client authentifié : la clé est envoyée sur toutes les requêtes."""
+    from api.main import app
+
+    with TestClient(app, headers={"X-API-Key": API_KEY}) as client:
+        yield client
+
+
+@pytest.fixture(scope="session")
+def api_anonyme():
+    """Client sans clé, pour vérifier que l'API refuse bien les appels non authentifiés."""
     from api.main import app
 
     with TestClient(app) as client:
