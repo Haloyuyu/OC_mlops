@@ -7,6 +7,7 @@ Uniquement la bibliothèque standard : s'exécute sur n'importe quel hôte cible
 
 import csv
 import json
+import os
 import sys
 import time
 import urllib.error
@@ -14,11 +15,15 @@ import urllib.request
 from pathlib import Path
 
 EXAMPLE_CLIENTS = Path(__file__).resolve().parent.parent / "model" / "clients_exemple.csv"
+# Même clé que celle passée au conteneur (secret GitHub en CI, variable en local).
+API_KEY = os.getenv("API_KEY", "")
 
 
-def call_api(url, body=None):
+def call_api(url, body=None, cle=None):
     data = None if body is None else json.dumps(body).encode()
-    request = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+    headers = {"Content-Type": "application/json",
+               "X-API-Key": API_KEY if cle is None else cle}
+    request = urllib.request.Request(url, data=data, headers=headers)
     with urllib.request.urlopen(request, timeout=30) as response:
         return response.status, response.read().decode()
 
@@ -49,7 +54,14 @@ def main(url):
     status, body = call_api(f"{url}/health")
     print(f"GET  /health  -> {status} {body}")
 
-    status, body = call_api(f"{url}/predict", {"features": first_client()})
+    try:
+        status, body = call_api(f"{url}/predict", {"features": first_client()})
+    except urllib.error.HTTPError as erreur:
+        if erreur.code == 401:
+            print("Clé d'API absente ou invalide : exportez la variable API_KEY utilisée "
+                  "par l'API avant de lancer ce test.")
+            return 1
+        raise
     prediction = json.loads(body)
     print(f"POST /predict -> {status} {prediction}")
     assert status == 200 and 0 <= prediction["probabilite_defaut"] <= 1
@@ -58,8 +70,17 @@ def main(url):
     print(f"GET  /ui/     -> {status}")
     assert status == 200
 
+    # contrôle de sécurité : l'API déployée doit refuser un appel sans clé
+    try:
+        statut_sans_cle, _ = call_api(f"{url}/predict", {"features": {"EXT_SOURCE_2": 0.5}}, cle="")
+    except urllib.error.HTTPError as refus:
+        statut_sans_cle = refus.code
+    print(f"POST /predict sans clé -> {statut_sans_cle} (401 attendu)")
+    assert statut_sans_cle == 401, "l'API accepte un appel non authentifié"
+
     print("Déploiement vérifié.")
+    return 0
 
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8000")
+    sys.exit(main(sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8000"))
