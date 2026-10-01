@@ -67,9 +67,20 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # Secret GitHub s'il existe, sinon clé éphémère valable le temps du job : jamais
+      # de clé en clair dans le dépôt, et l'API n'est jamais démarrée sans clé.
+      - name: Clé d'API du conteneur de test
+        env:
+          API_KEY_SECRET: ${{ secrets.API_KEY }}
+        run: |
+          CLE="${API_KEY_SECRET:-$(openssl rand -hex 32)}"
+          echo "::add-mask::$CLE"
+          echo "API_KEY=$CLE" >> "$GITHUB_ENV"
+
       - name: Vérification de l'image construite
         run: |
-          docker run -d --name api-test -p 8000:8000 "${{ steps.image.outputs.nom }}:${{ github.sha }}"
+          docker run -d --name api-test -e API_KEY="$API_KEY" -p 8000:8000 \
+            "${{ steps.image.outputs.nom }}:${{ github.sha }}"
           python3 scripts/smoke_test.py http://localhost:8000
 
       - name: Logs du conteneur
@@ -113,7 +124,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # L'API consomme ~260 Mo de RSS et ~5 Go de disque avec l'image : on refuse de
+      # L'API consomme ~260 Mo de RSS et l'image 240 Mo compressés : on refuse de
       # déployer sur un hôte qui ne peut pas la tenir, plutôt que de la voir tomber
       # sous charge (OOM) une fois en service.
       - name: Vérification des ressources de l'environnement cible
@@ -123,7 +134,23 @@ jobs:
           MEMOIRE_MO=$(free -m | awk '/^Mem:/{print $7}')
           DISQUE_MO=$(df -m --output=avail / | tail -1)
           test "$MEMOIRE_MO" -ge 1024 || { echo "Mémoire disponible insuffisante : ${MEMOIRE_MO} Mo < 1024 Mo"; exit 1; }
-          test "$DISQUE_MO" -ge 8192 || { echo "Espace disque insuffisant : ${DISQUE_MO} Mo < 8192 Mo"; exit 1; }
+          test "$DISQUE_MO" -ge 2048 || { echo "Espace disque insuffisant : ${DISQUE_MO} Mo < 2048 Mo"; exit 1; }
+
+      # La clé du déploiement vient du secret GitHub ; à défaut, une clé éphémère est
+      # tirée pour ce job. Elle n'apparaît ni dans le dépôt ni dans les logs (masquée).
+      - name: Clé d'API de l'API déployée
+        env:
+          API_KEY_SECRET: ${{ secrets.API_KEY }}
+        run: |
+          if [ -n "$API_KEY_SECRET" ]; then
+            echo "Clé d'API issue du secret GitHub API_KEY."
+            CLE="$API_KEY_SECRET"
+          else
+            echo "Secret API_KEY absent : clé éphémère générée pour ce déploiement."
+            CLE="$(openssl rand -hex 32)"
+          fi
+          echo "::add-mask::$CLE"
+          echo "API_KEY=$CLE" >> "$GITHUB_ENV"
 
       # Environnement cible simulé : l'hôte du runner joue le rôle du serveur de
       # production. L'image est tirée du registry, comme sur un vrai serveur.
@@ -133,7 +160,7 @@ jobs:
       - name: Lancement du conteneur
         run: |
           docker run -d --name api-scoring --restart unless-stopped \
-            --memory=1g --cpus=1 -p 8000:8000 "$IMAGE"
+            -e API_KEY="$API_KEY" --memory=1g --cpus=1 -p 8000:8000 "$IMAGE"
 
       - name: Test de fumée de l'API déployée
         run: python3 scripts/smoke_test.py http://localhost:8000
