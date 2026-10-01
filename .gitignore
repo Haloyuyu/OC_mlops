@@ -1,6 +1,7 @@
 .venv
 .claude
 .vscode
+.env
 **/__pycache__/
 data/
 mlartifacts/
