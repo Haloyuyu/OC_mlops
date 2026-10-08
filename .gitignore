@@ -6,3 +6,6 @@
 data/
 mlartifacts/
 .pytest_cache/
+logs/
+monitoring/*.db
+rapports/

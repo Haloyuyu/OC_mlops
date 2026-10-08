@@ -1,5 +1,6 @@
 import json
 import os
+import tempfile
 from pathlib import Path
 
 import pandas as pd
@@ -14,6 +15,11 @@ MODEL_DIR = Path(__file__).resolve().parent.parent / "model"
 # au chargement. Sans cela, la clé serait générée aléatoirement et inconnue des tests.
 API_KEY = "cle-de-test-pytest"
 os.environ["API_KEY"] = API_KEY
+
+# Le journal de production est redirigé vers un dossier temporaire : sans cela, les
+# appels des tests se mélangeraient aux vraies données de production dans logs/.
+JOURNAUX_TEST = Path(tempfile.gettempdir()) / "pytest-journaux-scoring"
+os.environ["MONITORING_DIR"] = str(JOURNAUX_TEST)
 
 
 @pytest.fixture(scope="session")

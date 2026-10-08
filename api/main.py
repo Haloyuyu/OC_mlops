@@ -6,6 +6,7 @@ Documentation interactive : http://localhost:8000/docs
 """
 
 import logging
+import time
 from typing import Literal
 
 import gradio as gr
@@ -14,10 +15,15 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from api.interface import create_interface
+from api.monitoring import (ProductionLog, evenement_prediction, evenement_requete,
+                            nouvel_identifiant)
 from api.scoring import OutOfBoundsValues, ScoringModel, UnknownFeatures, load_example_clients
 from api.security import API_KEY, HEADER_NAME, UI_USERNAME, log_key_status, require_api_key
 
 logger = logging.getLogger("api.scoring")
+
+# Journal de production : entrées, sorties, latences et erreurs de chaque appel.
+production_log = ProductionLog()
 
 # Le modèle est chargé une seule fois, au démarrage : le charger à chaque requête
 # ajouterait ~2,5 s et autant de copies en mémoire.
@@ -64,6 +70,26 @@ app = FastAPI(
 
 log_key_status()
 
+
+@app.middleware("http")
+async def journaliser_requete(request: Request, call_next):
+    """Journalise chaque requête HTTP : statut et latence, pour le suivi d'exploitation.
+
+    Les requêtes de l'interface Gradio (`/ui`) sont exclues : ce sont surtout des
+    fichiers statiques, qui noieraient le journal sans rien apprendre sur le modèle.
+    """
+    request.state.requete_id = nouvel_identifiant()
+    debut = time.perf_counter()
+    reponse = await call_next(request)
+    reponse.headers["X-Request-Id"] = request.state.requete_id
+    if not request.url.path.startswith("/ui"):
+        production_log.record({
+            "requete_id": request.state.requete_id,
+            **evenement_requete(request.url.path, request.method, reponse.status_code,
+                                (time.perf_counter() - debut) * 1000),
+        })
+    return reponse
+
 ERREUR_AUTH = {401: {"description": f"Clé d'API absente ou invalide (en-tête {HEADER_NAME})."}}
 
 
@@ -108,15 +134,36 @@ ERREURS_PREDICT = {
 }
 
 
+def _signature_modele():
+    return {"nom": model.metadata["nom"], "version": model.metadata["version"], "seuil": model.threshold}
+
+
 @app.post("/predict", response_model=Prediction, responses=ERREURS_PREDICT,
           dependencies=[Depends(require_api_key)])
-def predict(client: Client):
+def predict(client: Client, request: Request):
+    """Score un client et journalise l'appel (entrées, sortie, latence, erreur)."""
+    debut = time.perf_counter()
+    journal = {"requete_id": getattr(request.state, "requete_id", nouvel_identifiant())}
     try:
-        return model.predict(client.features)
-    except UnknownFeatures as error:
-        raise HTTPException(status_code=422, detail={"message": str(error), "features_inconnues": error.names})
-    except OutOfBoundsValues as error:
-        raise HTTPException(status_code=422, detail={"message": str(error), "features_hors_bornes": error.details})
+        sortie = model.predict(client.features)
+    except (UnknownFeatures, OutOfBoundsValues) as error:
+        cle_detail = "features_inconnues" if isinstance(error, UnknownFeatures) else "features_hors_bornes"
+        detail = error.names if isinstance(error, UnknownFeatures) else error.details
+        production_log.record({**journal, **evenement_prediction(
+            entrees=client.features, statut=422,
+            erreur={"type": type(error).__name__, "message": str(error)},
+            latence_ms=(time.perf_counter() - debut) * 1000,
+            modele=_signature_modele(),
+        )})
+        raise HTTPException(status_code=422, detail={"message": str(error), cle_detail: detail})
+
+    latence_modele_ms = (time.perf_counter() - debut) * 1000
+    production_log.record({**journal, **evenement_prediction(
+        entrees=client.features, sortie=sortie, statut=200,
+        latence_ms=latence_modele_ms, latence_modele_ms=latence_modele_ms,
+        modele=_signature_modele(),
+    )})
+    return sortie
 
 
 @app.exception_handler(Exception)

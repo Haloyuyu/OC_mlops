@@ -20,8 +20,14 @@ RUN pip install -r requirements-api.txt
 COPY model/ model/
 COPY api/ api/
 
-RUN useradd --create-home api
+# Le journal de production est écrit par un utilisateur non-root : le dossier doit
+# lui appartenir. À monter en volume (`-v ./logs:/app/logs`) pour que les journaux
+# survivent au conteneur et soient analysables depuis l'hôte.
+RUN useradd --create-home api \
+    && mkdir -p /app/logs \
+    && chown api /app/logs
 USER api
+VOLUME ["/app/logs"]
 
 EXPOSE 8000
 
