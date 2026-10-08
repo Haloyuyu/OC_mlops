@@ -14,8 +14,11 @@ servi avec MLFlow.
 | `test_serving.py` | Test REST du modèle servi |
 | `presentation.pptx` | Présentation de synthèse du projet |
 | `api/` | API FastAPI (`/predict`, `/model`, `/health`) + interface Gradio (`/ui`) |
-| `model/` | Modèle `@champion` exporté du registry + 20 clients d'exemple du jeu test |
+| `model/` | Modèle `@champion` exporté du registry, 20 clients d'exemple, référence de dérive |
 | `scripts/export_model.py` | Export du modèle champion du registry vers `model/` |
+| `monitoring/` | Stockage des données de production et analyse (dérive, exploitation) |
+| `scripts/simulate_traffic.py` | Génération de trafic de production, nominal ou dérivé |
+| `scripts/analyze_production.py` | Analyse automatique : dérive, anomalies, rapport HTML |
 | `tests/` | Tests unitaires (modèle, logique de scoring) et d'intégration (routes HTTP) |
 | `Dockerfile` | Image Docker de l'API |
 | `.github/workflows/ci-cd.yml` | Pipeline CI/CD : tests → image Docker → déploiement |
@@ -148,10 +151,132 @@ offrant moins de 1 Go de RAM disponible ou 2 Go de disque.
 pytest
 ```
 
-69 tests : chargement du modèle champion, cohérence de la décision avec le seuil métier,
+107 tests : chargement du modèle champion, cohérence de la décision avec le seuil métier,
 valeurs manquantes, valeurs aberrantes, types incorrects, routes HTTP, authentification
 (clé absente, fausse, tronquée ; `/health` public ; connexion Gradio), documentation
-OpenAPI, non-rechargement du modèle entre deux requêtes.
+OpenAPI, non-rechargement du modèle entre deux requêtes, journalisation de production
+(entrées, sorties, latences, erreurs, secrets jamais journalisés), ingestion SQLite
+idempotente, PSI et Kolmogorov-Smirnov, seuils d'exploitation et rapport HTML.
+
+## Suivi des données de production (dérive et anomalies)
+
+### Ce qui est stocké, et où
+
+```
+API ──► logs/production-AAAA-MM-JJ.jsonl ──► monitoring/production.db ──► rapport HTML
+        (1 ligne JSON par appel)              (SQLite, interrogeable)      + résumé JSON
+```
+
+Deux étages, comme en production réelle : l'API écrit des journaux **JSON Lines**
+transférables tels quels depuis l'hôte, qui sont ensuite ingérés dans une base
+**SQLite** sur laquelle tourne l'analyse. SQLite tient ici le rôle de PostgreSQL —
+même modèle de données, même SQL, aucun serveur à administrer. L'ingestion est
+idempotente (clé `requete_id` + `evenement`) : on peut la rejouer sans précaution.
+
+Chaque appel produit deux événements : un événement **`prediction`** (entrées du
+modèle, sortie, latence d'inférence, erreur éventuelle) et un événement
+**`requete`** (route, statut HTTP, latence totale), y compris pour les `401` et les
+`422`. C'est ce qui permet d'analyser séparément la dérive du modèle et la santé du
+service.
+
+| Variable d'environnement | Rôle |
+|---|---|
+| `MONITORING_DIR` | Dossier des journaux (défaut `logs/`) |
+| `MONITORING_ENABLED` | `0` désactive le suivi |
+| `MONITORING_RETENTION_DAYS` | Rétention des journaux (défaut 90 jours) |
+| `MONITORING_FEATURES` | `all` (défaut) ou liste de features à journaliser |
+
+Avec Docker, monter le dossier pour que les journaux survivent au conteneur :
+`docker run --env-file .env -v ./logs:/app/logs -p 8000:8000 api-scoring`.
+
+**Coût de stockage, mesuré** : journaliser les 795 features coûte ~16 Ko par appel
+(33 Ko en base, index compris), soit ~1,6 Go pour 100 000 appels. Restreindre
+`MONITORING_FEATURES` aux 33 features suivies ramène à ~1 Ko par appel, au prix de
+l'impossibilité d'analyser plus tard une feature non retenue. Le suivi ne peut jamais
+faire tomber l'API : si le dossier est inaccessible, le journal se désactive et
+l'erreur est tracée.
+
+**RGPD** : aucune donnée directement identifiante n'est journalisée — ni identifiant
+client, ni adresse IP, ni clé d'API. Les features restent des données personnelles
+(situation financière d'un demandeur) : d'où une rétention de 90 jours, appliquée par
+`python scripts/analyze_production.py --purger`, et des journaux exclus de git.
+
+### Lancer l'analyse
+
+```bash
+# 1. générer du trafic (API démarrée, API_KEY exportée)
+python scripts/simulate_traffic.py --n 250                      # population nominale
+python scripts/simulate_traffic.py --n 180 --profil derive --erreurs 24
+
+# 2. ingestion + analyse + rapport
+python scripts/analyze_production.py
+python scripts/analyze_production.py --evidently                # rapport Evidently en plus
+```
+
+Le script enchaîne ingestion, détection de dérive, analyse d'exploitation, rapport
+HTML (`rapports/monitoring.html`) et résumé JSON. **Il renvoie le code 1 en cas
+d'ALERTE** : il peut donc servir de sonde dans une tâche planifiée, sans avoir à lire
+le rapport pour savoir s'il faut regarder.
+
+| Ce qui est détecté | Méthode |
+|---|---|
+| Dérive d'une feature | PSI (seuils 0,1 / 0,25) **et** Kolmogorov-Smirnov, seuil corrigé par Bonferroni |
+| Feature qui cesse d'être renseignée | Écart du taux de valeurs manquantes > 10 points |
+| Dérive des prédictions | PSI sur les scores + écart du taux de refus |
+| Taux d'erreur | 5xx > 1 %, 4xx > 20 % |
+| Latence anormale | p95 > 500 ms (objectif de service) **ou** p95 récent > 3 × p95 précédent |
+
+Deux indicateurs plutôt qu'un seul : KS devient significatif pour des écarts
+minuscules dès que le volume monte, et le PSI seul ne dit rien de la fiabilité de
+l'écart. Une feature n'est déclarée en dérive que si l'effet est net (PSI ≥ 0,25), ou
+modéré **et** statistiquement significatif.
+
+Evidently est **optionnel** (`pip install -r requirements-monitoring.txt`) : la
+bibliothèque et ses dépendances pèsent ~800 Mo, hors de proportion avec une image
+d'API de 240 Mo. L'analyse n'en dépend pas ; `--evidently` ajoute un rapport
+complémentaire.
+
+### Étude de la dérive : ce que les données montrent
+
+Référence : 2000 dossiers du **jeu d'entraînement**, 33 features suivies (les 30 plus
+influentes du modèle et les variables du dossier client). Production simulée : des
+dossiers du **jeu test**, c'est-à-dire des clients que le modèle n'a jamais vus.
+
+| Période | Verdict | Features en dérive | Taux de refus |
+|---|---|---|---|
+| Trafic nominal (250 appels) | VIGILANCE | 4 / 33 | 31,9 % contre 30,3 % en référence |
+| Population dérivée (180 appels) | ALERTE | 9 / 33 | 55,6 % contre 30,3 % |
+
+**Le jeu test de Home Credit dérive réellement du jeu d'entraînement.** Sur du trafic
+nominal, sans aucune perturbation, `PAYMENT_RATE` affiche un PSI de 0,50 et
+`AMT_CREDIT` / `AMT_GOODS_PRICE` environ 0,17. Vérification sur les données brutes :
+la médiane de `PAYMENT_RATE` passe de 0,050 (train) à 0,061 (test) et celle de
+`AMT_CREDIT` de 513 k à 450 k. Le jeu test est une fenêtre temporelle postérieure, pas
+un tirage aléatoire du train — des crédits plus petits, remboursés plus vite. Ce n'est
+pas un artefact du simulateur : un échantillon aléatoire de 1000 dossiers test donne
+le même résultat.
+
+**Points de vigilance qui en découlent**
+
+1. **Une dérive des features ne se traduit pas mécaniquement en dérive des décisions.**
+   Malgré un PSI de 0,50 sur la feature la plus influente du modèle, le taux de refus
+   ne bouge que de 1,6 point sur le trafic nominal. C'est précisément pour cela qu'il
+   faut surveiller les deux : la dérive des entrées alerte tôt, celle des sorties
+   mesure l'impact métier.
+2. **Le seuil de 0,080 a été optimisé sur la distribution d'entraînement.** Sur la
+   population dérivée, le taux de refus grimpe à 55,6 % : le compromis coût
+   faux-négatifs / faux-positifs validé en modélisation n'est plus celui qui
+   s'applique. Un seuil doit être réévalué quand la population bouge, pas seulement
+   quand le modèle est réentraîné.
+3. **Les valeurs manquantes sont un angle mort.** LightGBM les accepte sans erreur :
+   une feature qui cesse d'être alimentée dégrade le score en silence, sans aucune
+   trace dans les erreurs HTTP. D'où leur suivi séparé du PSI.
+4. **La référence vieillit.** Elle est liée au modèle `@champion` exporté ; tout
+   réentraînement impose de régénérer `model/reference_drift.csv`, sinon la
+   comparaison perd son sens.
+5. **La dérive observée est mesurée sur quelques centaines d'appels.** En deçà de
+   30 appels, l'analyse refuse de conclure (« échantillon insuffisant ») plutôt que de
+   produire un verdict dont la variance serait plus grande que l'effet.
 
 ### Pipeline CI/CD (GitHub Actions)
 

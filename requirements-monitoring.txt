@@ -1,0 +1,6 @@
+# Dépendances de l'analyse des données de production (poste d'analyse, pas l'API).
+# Évidemment hors de l'image Docker : Evidently et ses dépendances pèsent ~800 Mo,
+# alors que l'image de l'API fait 240 Mo. L'analyse de scripts/analyze_production.py
+# n'en dépend pas : `--evidently` ajoute seulement un rapport HTML complémentaire.
+-r requirements-dev.txt
+evidently==0.7.23
