@@ -19,6 +19,7 @@ servi avec MLFlow.
 | `monitoring/` | Stockage des données de production et analyse (dérive, exploitation) |
 | `scripts/simulate_traffic.py` | Génération de trafic de production, nominal ou dérivé |
 | `scripts/analyze_production.py` | Analyse automatique : dérive, anomalies, rapport HTML |
+| `.env.example` | Modèle de configuration locale (clé d'API), copier en `.env` |
 | `tests/` | Tests unitaires (modèle, logique de scoring) et d'intégration (routes HTTP) |
 | `Dockerfile` | Image Docker de l'API |
 | `.github/workflows/ci-cd.yml` | Pipeline CI/CD : tests → image Docker → déploiement |
@@ -204,7 +205,7 @@ client, ni adresse IP, ni clé d'API. Les features restent des données personne
 ### Lancer l'analyse
 
 ```bash
-# 1. générer du trafic (API démarrée, API_KEY exportée)
+# 1. générer du trafic (API démarrée ; la clé est lue dans .env)
 python scripts/simulate_traffic.py --n 250                      # population nominale
 python scripts/simulate_traffic.py --n 180 --profil derive --erreurs 24
 

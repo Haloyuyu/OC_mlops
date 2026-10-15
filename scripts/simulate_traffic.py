@@ -10,7 +10,8 @@ fonctionne (et non seulement qu'elle ne crie pas au loup).
     # population dérivée + appels fautifs (erreurs 422 et 401)
     python scripts/simulate_traffic.py --n 200 --profil derive --erreurs 20
 
-Prérequis : l'API doit tourner, et `API_KEY` doit contenir sa clé.
+Prérequis : l'API doit tourner avec la même clé. Celle-ci est lue dans `.env`, ou
+dans la variable d'environnement `API_KEY` si elle est déjà exportée.
 """
 
 import argparse
@@ -22,6 +23,8 @@ from pathlib import Path
 
 import pandas as pd
 import requests
+
+from _env import charger_env
 
 RACINE = Path(__file__).resolve().parent.parent
 DONNEES = RACINE / "data" / "processed_data.csv"
@@ -114,9 +117,11 @@ def main():
     parser.add_argument("--graine", type=int, default=None)
     arguments = parser.parse_args()
 
+    charger_env()                     # .env si la variable n'est pas déjà exportée
     cle = os.getenv("API_KEY", "")
     if not cle:
-        print("Définissez API_KEY (la clé de l'API) avant de lancer la simulation.")
+        print("Aucune clé d'API : renseignez API_KEY dans .env (cf. .env.example) "
+              "ou exportez-la avant de lancer la simulation.")
         return 1
     if arguments.graine is not None:
         random.seed(arguments.graine)

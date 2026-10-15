@@ -15,6 +15,13 @@ import urllib.request
 from pathlib import Path
 
 EXAMPLE_CLIENTS = Path(__file__).resolve().parent.parent / "model" / "clients_exemple.csv"
+
+try:                                  # confort local ; absent si le script est copié seul
+    from _env import charger_env
+    charger_env()
+except ImportError:
+    pass
+
 # Même clé que celle passée au conteneur (secret GitHub en CI, variable en local).
 API_KEY = os.getenv("API_KEY", "")
 
