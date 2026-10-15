@@ -7,6 +7,18 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     GRADIO_ANALYTICS_ENABLED=False
 
+# Configuration d'inférence retenue (justification et mesures : docs/rapport_optimisation.md)
+# - MODEL_BACKEND=booster : Booster LightGBM appelé directement sur numpy, sans la
+#   validation de schéma MLflow ni pandas (40 ms -> 0,5 ms par prédiction, sorties
+#   identiques au bit près) ;
+# - LGBM_NUM_THREADS=1 et OMP_NUM_THREADS=1 : un client = une ligne, le parallélisme
+#   OpenMP n'accélère rien et sature le CPU sous charge (cible : --cpus=1) ;
+# - WEB_CONCURRENCY=1 : un worker uvicorn par vCPU alloué ; à augmenter avec --cpus.
+ENV MODEL_BACKEND=booster \
+    LGBM_NUM_THREADS=1 \
+    OMP_NUM_THREADS=1 \
+    WEB_CONCURRENCY=1
+
 # libgomp1 : runtime OpenMP requis par LightGBM, absent de l'image slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libgomp1 \
