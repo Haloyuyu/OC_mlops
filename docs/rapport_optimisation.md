@@ -11,6 +11,7 @@
 | Temps de réponse HTTP, p50 (1 client) | 37,1 ms | 4,7 ms | **×7,9** |
 | Temps de réponse HTTP, p95 (1 client) | 121 ms | 6,0 ms | **×20** |
 | Débit maximal, 1 processus (16 clients) | 22 appels/s | 268 appels/s | **×12** |
+| Temps de réponse p50 / p95, conteneur déployé par la CI (1 vCPU) | — | 2,8 / 3,0 ms | seuil : 100 ms |
 | CPU consommé par prédiction | ~300 ms CPU | ~4 ms CPU | **×70** |
 | Décisions modifiées (20 000 clients) | — | **0** | sorties identiques au bit près |
 
@@ -371,6 +372,24 @@ dérive, pour un gain de l'ordre de la milliseconde.
   optimisé passe (p95 de 32 ms, avec une nouvelle connexion TCP par appel) ; l'ancien
   chemin pyfunc est rejeté (p95 de 111 ms). La latence mesurée sur le conteneur
   déployé est publiée dans le résumé du job `deploy`.
+
+### 7.5 Mesure sur le conteneur déployé par le pipeline
+
+La version optimisée a été déployée par le pipeline CI/CD le 15 octobre 2026 : tests
+(y compris le test du journal multi-processus sous Linux), construction de l'image,
+puis déploiement. Le test de fumée du conteneur déployé (Linux, 1 vCPU, 1 Go de RAM)
+a mesuré :
+
+```
+Latence /predict (50 appels) -> p50 2.8 ms, p95 3.0 ms (max toléré 100 ms)
+```
+
+Ce temps de réponse est mesuré de bout en bout, vu d'un client qui ouvre une nouvelle
+connexion à chaque appel. Il est inférieur à la mesure locale sous Windows (p50 de
+4,7 ms avec connexion persistante), car l'ouverture d'une connexion TCP locale coûte
+beaucoup moins cher sous Linux. Il est aussi **40 fois sous le seuil** de 100 ms. Avec
+une seule vCPU, la limite de ressources de la production n'a donc pas dégradé le gain
+mesuré en développement.
 
 ## 8. Configuration finale et justification
 
