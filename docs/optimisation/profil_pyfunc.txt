@@ -1,0 +1,43 @@
+Profil cProfile — backend « pyfunc », 500 appels
+Temps réel sans profileur : 39.37 ms par appel
+Temps sous profileur      : 100.72 ms par appel
+
+Temps cumulé par étape (ms par appel, sous profileur) :
+  validation de schéma MLflow                      70.40 ms  (69.9%)
+  wrapper pyfunc + sklearn (predict_proba)          5.18 ms  ( 5.1%)
+  inférence LightGBM (Booster.predict)              4.45 ms  ( 4.4%)
+  construction du DataFrame client                  0.41 ms  ( 0.4%)
+
+         92061949 function calls (88398448 primitive calls) in 50.358 seconds
+
+   Ordered by: cumulative time
+   List reduced from 530 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+  501/500    0.342    0.001   50.116    0.100 scoring.py:102(predict)
+      500    0.009    0.000   38.180    0.076 __init__.py:837(predict)
+      500    0.007    0.000   38.156    0.076 __init__.py:847(_predict)
+      500    0.013    0.000   35.215    0.070 __init__.py:724(_validate_prediction_input)
+      500    0.107    0.000   35.202    0.070 utils.py:1127(_enforce_schema)
+      500    0.750    0.001   34.735    0.069 utils.py:960(_enforce_named_col_schema)
+     2000    0.025    0.000   25.056    0.013 frame.py:698(__init__)
+     1500    0.015    0.000   18.898    0.013 construction.py:96(arrays_to_mgr)
+   397500    1.125    0.000   17.170    0.000 frame.py:4073(__getitem__)
+   397500    0.917    0.000   14.748    0.000 frame.py:4637(_get_item_cache)
+     1000    0.569    0.001   14.015    0.014 construction.py:423(dict_to_mgr)
+   398500    0.660    0.000   12.954    0.000 frame.py:3994(_ixs)
+     1500    1.303    0.001    9.060    0.006 construction.py:596(_homogenize)
+   397500    0.627    0.000    8.213    0.000 frame.py:4619(_box_col_values)
+17746700/15362700    4.046    0.000    8.192    0.000 {built-in method builtins.isinstance}
+     1000    0.212    0.000    8.144    0.008 construction.py:638(_extract_index)
+      500    0.191    0.000    7.334    0.015 api.py:202(union_indexes)
+   397000    0.905    0.000    6.802    0.000 base.py:3245(union)
+   403500    1.596    0.000    5.143    0.000 construction.py:517(sanitize_array)
+   794000    0.429    0.000    4.266    0.000 common.py:81(get_op_result_name)
+   398500    0.415    0.000    4.112    0.000 frame.py:682(_constructor_sliced_from_mgr)
+  4410500    1.807    0.000    4.003    0.000 generic.py:42(_instancecheck)
+  1595000    3.300    0.000    3.317    0.000 generic.py:6323(__setattr__)
+      500    0.002    0.000    3.261    0.007 construction.py:506(nested_data_to_arrays)
+      500    0.003    0.000    3.252    0.007 construction.py:793(to_arrays)
+
+

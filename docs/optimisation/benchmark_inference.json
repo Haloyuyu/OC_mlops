@@ -1,0 +1,419 @@
+{
+  "date": "2026-10-15",
+  "clients": 20000,
+  "workers": 8,
+  "seuil": 0.07999999999999999,
+  "environnement": {
+    "processeur": "Intel64 Family 6 Model 167 Stepping 1, GenuineIntel",
+    "coeurs_logiques": 12,
+    "systeme": "Windows 11",
+    "python": "3.12.7"
+  },
+  "decomposition_pyfunc": {
+    "appel_complet_hors_ramasse_miettes_ms": 35.27504997327924,
+    "construction_dataframe_pandas_ms": 6.404699932318181,
+    "validation_schema_mlflow_ms": 21.898800041526556,
+    "surcout_sklearn_et_conversion_pandas_ms": 6.212850043084472,
+    "arbres_lightgbm_4_threads_ms": 0.2960499841719866,
+    "reste_controles_et_mise_en_forme_ms": 0.46264997217804193,
+    "arbres_lightgbm_1_thread_ms": 0.2578499843366444
+  },
+  "variantes": {
+    "pyfunc": {
+      "description": "MLflow pyfunc (avant optimisation)",
+      "unitaire": {
+        "moyenne": 40.35114700323902,
+        "p50": 36.412500019650906,
+        "p95": 113.14227495458906,
+        "p99": 118.30372802331111
+      },
+      "collectes_gen2_pour_1000_appels": 65,
+      "charge": {
+        "moyenne": 333.3927232507267,
+        "p50": 323.57195002259687,
+        "p95": 602.4253150855651,
+        "p99": 760.2365100395399,
+        "debit_par_s": 23.79706179822243,
+        "cpu_pct": 748.7,
+        "workers": 8
+      },
+      "precision": {
+        "ecart_proba_max": 0.0,
+        "ecart_proba_moyen": 0.0,
+        "decisions_changees": 0,
+        "accord_decisions": 1.0,
+        "auc": 0.8568399839449956,
+        "cout_metier_par_client": 0.3922,
+        "taux_refus": 0.3042,
+        "par_groupe": {
+          "CODE_GENDER=0": {
+            "clients": 6836,
+            "taux_refus_reference": 0.4053540081919251,
+            "taux_refus": 0.4053540081919251,
+            "decisions_changees": 0
+          },
+          "CODE_GENDER=1": {
+            "clients": 13164,
+            "taux_refus_reference": 0.25167122455180796,
+            "taux_refus": 0.25167122455180796,
+            "decisions_changees": 0
+          },
+          "age=30-44": {
+            "clients": 8036,
+            "taux_refus_reference": 0.3344947735191638,
+            "taux_refus": 0.3344947735191638,
+            "decisions_changees": 0
+          },
+          "age=45-59": {
+            "clients": 6768,
+            "taux_refus_reference": 0.24408983451536642,
+            "taux_refus": 0.24408983451536642,
+            "decisions_changees": 0
+          },
+          "age=60+": {
+            "clients": 2285,
+            "taux_refus_reference": 0.14704595185995623,
+            "taux_refus": 0.14704595185995623,
+            "decisions_changees": 0
+          },
+          "age=<30": {
+            "clients": 2911,
+            "taux_refus_reference": 0.48368258330470626,
+            "taux_refus": 0.48368258330470626,
+            "decisions_changees": 0
+          }
+        }
+      }
+    },
+    "booster-4t": {
+      "description": "Booster LightGBM direct, 4 thread(s)",
+      "unitaire": {
+        "moyenne": 0.6025681999744847,
+        "p50": 0.5814999458380044,
+        "p95": 0.8305100374855101,
+        "p99": 0.9752239740919321
+      },
+      "collectes_gen2_pour_1000_appels": 0,
+      "charge": {
+        "moyenne": 3.7560978014662396,
+        "p50": 3.091599966865033,
+        "p95": 8.680144971003754,
+        "p99": 12.151075087022027,
+        "debit_par_s": 2088.0588715481213,
+        "cpu_pct": 855.8,
+        "workers": 8
+      },
+      "precision": {
+        "ecart_proba_max": 0.0,
+        "ecart_proba_moyen": 0.0,
+        "decisions_changees": 0,
+        "accord_decisions": 1.0,
+        "auc": 0.8568399839449956,
+        "cout_metier_par_client": 0.3922,
+        "taux_refus": 0.3042,
+        "par_groupe": {
+          "CODE_GENDER=0": {
+            "clients": 6836,
+            "taux_refus_reference": 0.4053540081919251,
+            "taux_refus": 0.4053540081919251,
+            "decisions_changees": 0
+          },
+          "CODE_GENDER=1": {
+            "clients": 13164,
+            "taux_refus_reference": 0.25167122455180796,
+            "taux_refus": 0.25167122455180796,
+            "decisions_changees": 0
+          },
+          "age=30-44": {
+            "clients": 8036,
+            "taux_refus_reference": 0.3344947735191638,
+            "taux_refus": 0.3344947735191638,
+            "decisions_changees": 0
+          },
+          "age=45-59": {
+            "clients": 6768,
+            "taux_refus_reference": 0.24408983451536642,
+            "taux_refus": 0.24408983451536642,
+            "decisions_changees": 0
+          },
+          "age=60+": {
+            "clients": 2285,
+            "taux_refus_reference": 0.14704595185995623,
+            "taux_refus": 0.14704595185995623,
+            "decisions_changees": 0
+          },
+          "age=<30": {
+            "clients": 2911,
+            "taux_refus_reference": 0.48368258330470626,
+            "taux_refus": 0.48368258330470626,
+            "decisions_changees": 0
+          }
+        }
+      }
+    },
+    "booster-1t": {
+      "description": "Booster LightGBM direct, 1 thread(s)",
+      "unitaire": {
+        "moyenne": 0.5298642991110682,
+        "p50": 0.4731999943032861,
+        "p95": 0.8350849559064952,
+        "p99": 1.066839974373579
+      },
+      "collectes_gen2_pour_1000_appels": 0,
+      "charge": {
+        "moyenne": 3.3155555239354726,
+        "p50": 2.902899985201657,
+        "p95": 7.06113998312503,
+        "p99": 9.409209933364762,
+        "debit_par_s": 2278.3623358823193,
+        "cpu_pct": 175.0,
+        "workers": 8
+      },
+      "precision": {
+        "ecart_proba_max": 0.0,
+        "ecart_proba_moyen": 0.0,
+        "decisions_changees": 0,
+        "accord_decisions": 1.0,
+        "auc": 0.8568399839449956,
+        "cout_metier_par_client": 0.3922,
+        "taux_refus": 0.3042,
+        "par_groupe": {
+          "CODE_GENDER=0": {
+            "clients": 6836,
+            "taux_refus_reference": 0.4053540081919251,
+            "taux_refus": 0.4053540081919251,
+            "decisions_changees": 0
+          },
+          "CODE_GENDER=1": {
+            "clients": 13164,
+            "taux_refus_reference": 0.25167122455180796,
+            "taux_refus": 0.25167122455180796,
+            "decisions_changees": 0
+          },
+          "age=30-44": {
+            "clients": 8036,
+            "taux_refus_reference": 0.3344947735191638,
+            "taux_refus": 0.3344947735191638,
+            "decisions_changees": 0
+          },
+          "age=45-59": {
+            "clients": 6768,
+            "taux_refus_reference": 0.24408983451536642,
+            "taux_refus": 0.24408983451536642,
+            "decisions_changees": 0
+          },
+          "age=60+": {
+            "clients": 2285,
+            "taux_refus_reference": 0.14704595185995623,
+            "taux_refus": 0.14704595185995623,
+            "decisions_changees": 0
+          },
+          "age=<30": {
+            "clients": 2911,
+            "taux_refus_reference": 0.48368258330470626,
+            "taux_refus": 0.48368258330470626,
+            "decisions_changees": 0
+          }
+        }
+      }
+    },
+    "booster-tous": {
+      "description": "Booster LightGBM direct, tous les cœurs",
+      "unitaire": {
+        "moyenne": 0.6274233993608505,
+        "p50": 0.603599997702986,
+        "p95": 0.7755950791761277,
+        "p99": 0.9595079720020294
+      },
+      "collectes_gen2_pour_1000_appels": 0,
+      "charge": {
+        "moyenne": 3.4851384994981345,
+        "p50": 2.7970499941147864,
+        "p95": 8.029410010203712,
+        "p99": 11.267926000291482,
+        "debit_par_s": 2240.8083581900737,
+        "cpu_pct": 921.5,
+        "workers": 8
+      },
+      "precision": {
+        "ecart_proba_max": 0.0,
+        "ecart_proba_moyen": 0.0,
+        "decisions_changees": 0,
+        "accord_decisions": 1.0,
+        "auc": 0.8568399839449956,
+        "cout_metier_par_client": 0.3922,
+        "taux_refus": 0.3042,
+        "par_groupe": {
+          "CODE_GENDER=0": {
+            "clients": 6836,
+            "taux_refus_reference": 0.4053540081919251,
+            "taux_refus": 0.4053540081919251,
+            "decisions_changees": 0
+          },
+          "CODE_GENDER=1": {
+            "clients": 13164,
+            "taux_refus_reference": 0.25167122455180796,
+            "taux_refus": 0.25167122455180796,
+            "decisions_changees": 0
+          },
+          "age=30-44": {
+            "clients": 8036,
+            "taux_refus_reference": 0.3344947735191638,
+            "taux_refus": 0.3344947735191638,
+            "decisions_changees": 0
+          },
+          "age=45-59": {
+            "clients": 6768,
+            "taux_refus_reference": 0.24408983451536642,
+            "taux_refus": 0.24408983451536642,
+            "decisions_changees": 0
+          },
+          "age=60+": {
+            "clients": 2285,
+            "taux_refus_reference": 0.14704595185995623,
+            "taux_refus": 0.14704595185995623,
+            "decisions_changees": 0
+          },
+          "age=<30": {
+            "clients": 2911,
+            "taux_refus_reference": 0.48368258330470626,
+            "taux_refus": 0.48368258330470626,
+            "decisions_changees": 0
+          }
+        }
+      }
+    },
+    "onnx-fp32": {
+      "description": "ONNX Runtime, float32, 1 thread",
+      "unitaire": {
+        "moyenne": 0.2618911990430206,
+        "p50": 0.2367999986745417,
+        "p95": 0.38301000604406,
+        "p99": 0.5195119965355842
+      },
+      "collectes_gen2_pour_1000_appels": 0,
+      "charge": {
+        "moyenne": 1.8785130993055645,
+        "p50": 1.1147999903187156,
+        "p95": 5.5557500454597175,
+        "p99": 15.970275056315554,
+        "debit_par_s": 3900.129386835501,
+        "cpu_pct": 175.3,
+        "workers": 8
+      },
+      "precision": {
+        "ecart_proba_max": 0.003944840953274742,
+        "ecart_proba_moyen": 5.2336077332088954e-06,
+        "decisions_changees": 1,
+        "accord_decisions": 0.99995,
+        "auc": 0.8568410436479539,
+        "cout_metier_par_client": 0.39225,
+        "taux_refus": 0.30425,
+        "par_groupe": {
+          "CODE_GENDER=0": {
+            "clients": 6836,
+            "taux_refus_reference": 0.4053540081919251,
+            "taux_refus": 0.40550029256875364,
+            "decisions_changees": 1
+          },
+          "CODE_GENDER=1": {
+            "clients": 13164,
+            "taux_refus_reference": 0.25167122455180796,
+            "taux_refus": 0.25167122455180796,
+            "decisions_changees": 0
+          },
+          "age=30-44": {
+            "clients": 8036,
+            "taux_refus_reference": 0.3344947735191638,
+            "taux_refus": 0.3344947735191638,
+            "decisions_changees": 0
+          },
+          "age=45-59": {
+            "clients": 6768,
+            "taux_refus_reference": 0.24408983451536642,
+            "taux_refus": 0.24408983451536642,
+            "decisions_changees": 0
+          },
+          "age=60+": {
+            "clients": 2285,
+            "taux_refus_reference": 0.14704595185995623,
+            "taux_refus": 0.14704595185995623,
+            "decisions_changees": 0
+          },
+          "age=<30": {
+            "clients": 2911,
+            "taux_refus_reference": 0.48368258330470626,
+            "taux_refus": 0.48402610786671246,
+            "decisions_changees": 1
+          }
+        }
+      }
+    },
+    "onnx-int8": {
+      "description": "ONNX Runtime, quantification dynamique int8",
+      "unitaire": {
+        "moyenne": 0.24875790160149336,
+        "p50": 0.22975000320002437,
+        "p95": 0.3598249517381191,
+        "p99": 0.5041659960988908
+      },
+      "collectes_gen2_pour_1000_appels": 0,
+      "charge": {
+        "moyenne": 1.8594528512330726,
+        "p50": 0.9758499800227582,
+        "p95": 6.8810999975539655,
+        "p99": 16.11933902837333,
+        "debit_par_s": 4181.67583361674,
+        "cpu_pct": 173.8,
+        "workers": 8
+      },
+      "precision": {
+        "ecart_proba_max": 0.003944840953274742,
+        "ecart_proba_moyen": 5.2336077332088954e-06,
+        "decisions_changees": 1,
+        "accord_decisions": 0.99995,
+        "auc": 0.8568410436479539,
+        "cout_metier_par_client": 0.39225,
+        "taux_refus": 0.30425,
+        "par_groupe": {
+          "CODE_GENDER=0": {
+            "clients": 6836,
+            "taux_refus_reference": 0.4053540081919251,
+            "taux_refus": 0.40550029256875364,
+            "decisions_changees": 1
+          },
+          "CODE_GENDER=1": {
+            "clients": 13164,
+            "taux_refus_reference": 0.25167122455180796,
+            "taux_refus": 0.25167122455180796,
+            "decisions_changees": 0
+          },
+          "age=30-44": {
+            "clients": 8036,
+            "taux_refus_reference": 0.3344947735191638,
+            "taux_refus": 0.3344947735191638,
+            "decisions_changees": 0
+          },
+          "age=45-59": {
+            "clients": 6768,
+            "taux_refus_reference": 0.24408983451536642,
+            "taux_refus": 0.24408983451536642,
+            "decisions_changees": 0
+          },
+          "age=60+": {
+            "clients": 2285,
+            "taux_refus_reference": 0.14704595185995623,
+            "taux_refus": 0.14704595185995623,
+            "decisions_changees": 0
+          },
+          "age=<30": {
+            "clients": 2911,
+            "taux_refus_reference": 0.48368258330470626,
+            "taux_refus": 0.48402610786671246,
+            "decisions_changees": 1
+          }
+        }
+      }
+    }
+  }
+}

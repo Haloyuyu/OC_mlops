@@ -1,0 +1,41 @@
+Profil cProfile — backend « booster », 500 appels
+Temps réel sans profileur : 0.51 ms par appel
+Temps sous profileur      : 0.55 ms par appel
+
+Temps cumulé par étape (ms par appel, sous profileur) :
+  inférence LightGBM (Booster.predict)              0.33 ms  (59.1%)
+  vectorisation numpy                               0.10 ms  (18.8%)
+
+         47001 function calls (46001 primitive calls) in 0.276 seconds
+
+   Ordered by: cumulative time
+   List reduced from 47 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+      500    0.059    0.000    0.276    0.001 scoring.py:102(predict)
+      500    0.001    0.000    0.164    0.000 scoring.py:149(predict_proba)
+      500    0.001    0.000    0.163    0.000 basic.py:4821(predict)
+      500    0.002    0.000    0.150    0.000 basic.py:1027(predict)
+      500    0.001    0.000    0.147    0.000 basic.py:1257(__pred_for_np2d)
+      500    0.134    0.000    0.146    0.000 basic.py:1216(__inner_predict_np2d)
+      500    0.049    0.000    0.052    0.000 scoring.py:141(vectorize)
+      500    0.002    0.000    0.006    0.000 basic.py:954(from_booster)
+      500    0.002    0.000    0.006    0.000 basic.py:676(_c_float_array)
+ 1500/500    0.002    0.000    0.005    0.000 copy.py:118(deepcopy)
+      500    0.001    0.000    0.004    0.000 basic.py:919(__init__)
+      500    0.002    0.000    0.003    0.000 numeric.py:323(full)
+      500    0.001    0.000    0.003    0.000 copy.py:217(_deepcopy_dict)
+      500    0.002    0.000    0.003    0.000 basic.py:477(_param_dict_to_str)
+     7500    0.002    0.000    0.002    0.000 {built-in method builtins.isinstance}
+     1000    0.001    0.000    0.002    0.000 _internal.py:279(data_as)
+      500    0.001    0.000    0.002    0.000 basic.py:174(_np2d_to_np1d)
+     1000    0.002    0.000    0.002    0.000 __init__.py:517(cast)
+      500    0.002    0.000    0.002    0.000 basic.py:1187(__get_num_preds)
+      500    0.001    0.000    0.001    0.000 copy.py:231(_keep_alive)
+     1000    0.001    0.000    0.001    0.000 {built-in method numpy.asarray}
+      500    0.000    0.000    0.001    0.000 numeric.py:483(count_nonzero)
+     1000    0.001    0.000    0.001    0.000 {built-in method numpy.empty}
+     1000    0.000    0.000    0.001    0.000 <frozen abc>:117(__instancecheck__)
+     1000    0.001    0.000    0.001    0.000 _internal.py:262(__init__)
+
+

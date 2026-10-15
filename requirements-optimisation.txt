@@ -1,0 +1,8 @@
+# Dépendances des expériences d'optimisation (poste de développement, pas l'API).
+# ONNX Runtime a été évalué puis écarté de la production (cf. docs/rapport_optimisation.md) :
+# il n'entre donc ni dans requirements-api.txt ni dans l'image Docker.
+-r requirements-dev.txt
+onnx==1.23.2
+onnxruntime==1.31.0
+onnxmltools==1.16.0
+onnxconverter-common==1.16.0
