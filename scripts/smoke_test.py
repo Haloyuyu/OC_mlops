@@ -25,6 +25,13 @@ except ImportError:
 # Même clé que celle passée au conteneur (secret GitHub en CI, variable en local).
 API_KEY = os.getenv("API_KEY", "")
 
+# Garde-fou de performance : p95 du temps de réponse de /predict, vu du client. Le
+# chemin optimisé répond en ~5 ms (p95 ~6 ms) ; l'ancien chemin pyfunc avait un p95 de
+# ~120 ms. Un dépassement signale une régression de performance et bloque le
+# déploiement, au même titre qu'une erreur fonctionnelle.
+P95_MAX_MS = float(os.getenv("SMOKE_P95_MAX_MS", "100"))
+N_APPELS_LATENCE = 50
+
 
 def call_api(url, body=None, cle=None):
     data = None if body is None else json.dumps(body).encode()
@@ -72,6 +79,21 @@ def main(url):
     prediction = json.loads(body)
     print(f"POST /predict -> {status} {prediction}")
     assert status == 200 and 0 <= prediction["probabilite_defaut"] <= 1
+
+    client = first_client()
+    for _ in range(5):                                   # échauffement
+        call_api(f"{url}/predict", {"features": client})
+    latences = []
+    for _ in range(N_APPELS_LATENCE):
+        debut = time.perf_counter()
+        call_api(f"{url}/predict", {"features": client})
+        latences.append((time.perf_counter() - debut) * 1000)
+    latences.sort()
+    p50 = latences[len(latences) // 2]
+    p95 = latences[int(0.95 * (len(latences) - 1))]
+    print(f"Latence /predict ({N_APPELS_LATENCE} appels) -> p50 {p50:.1f} ms, "
+          f"p95 {p95:.1f} ms (max toléré {P95_MAX_MS:.0f} ms)")
+    assert p95 <= P95_MAX_MS, f"régression de performance : p95 {p95:.1f} ms > {P95_MAX_MS:.0f} ms"
 
     status, _ = call_api(f"{url}/ui/")
     print(f"GET  /ui/     -> {status}")

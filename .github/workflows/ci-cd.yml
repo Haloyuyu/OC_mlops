@@ -124,7 +124,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # L'API consomme ~260 Mo de RSS et l'image 240 Mo compressés : on refuse de
+      # L'API consomme ~325 Mo de RSS et l'image 240 Mo compressés : on refuse de
       # déployer sur un hôte qui ne peut pas la tenir, plutôt que de la voir tomber
       # sous charge (OOM) une fois en service.
       - name: Vérification des ressources de l'environnement cible
@@ -162,8 +162,10 @@ jobs:
           docker run -d --name api-scoring --restart unless-stopped \
             -e API_KEY="$API_KEY" --memory=1g --cpus=1 -p 8000:8000 "$IMAGE"
 
+      # Le test de fumée vérifie aussi le temps de réponse (p95 de /predict sous
+      # SMOKE_P95_MAX_MS) : une régression de performance bloque le déploiement.
       - name: Test de fumée de l'API déployée
-        run: python3 scripts/smoke_test.py http://localhost:8000
+        run: python3 scripts/smoke_test.py http://localhost:8000 | tee smoke-test.txt
 
       - name: Consommation réelle du conteneur
         run: docker stats --no-stream api-scoring
@@ -179,5 +181,6 @@ jobs:
             echo ""
             echo "- Image : \`$IMAGE\`"
             echo "- Santé : \`$(curl -s http://localhost:8000/health)\`"
+            echo "- $(grep 'Latence /predict' smoke-test.txt)"
             echo "- Endpoints : \`POST /predict\`, \`GET /model\`, \`GET /docs\`, interface Gradio sur \`/ui\`"
           } >> "$GITHUB_STEP_SUMMARY"
