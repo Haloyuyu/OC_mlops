@@ -18,6 +18,8 @@ from datetime import datetime, timezone
 import numpy as np
 import pandas as pd
 
+from monitoring.operations import SEUILS
+
 COULEURS = {
     "reference": "#2a78d6",
     "production": "#eb6834",
@@ -391,7 +393,8 @@ net (PSI ≥ 0,25) ou modéré et statistiquement significatif (KS, seuil corrig
 <h2>Exploitation</h2>
 <figure>{_barres_statuts(exploitation['par_statut'])}
 <figcaption>Répartition des codes HTTP sur la période.</figcaption></figure>
-<figure>{_courbe_latence(production['latence_ms'] if 'latence_ms' in production else [], 500)}
+<figure>{_courbe_latence(production['latence_ms'] if 'latence_ms' in production else [],
+                         SEUILS['latence_p95_ms'])}
 <figcaption>Latence de chaque appel à /predict, comparée à l'objectif de service.</figcaption></figure>
 
 <h2>Points de vigilance</h2>

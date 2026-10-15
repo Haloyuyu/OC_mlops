@@ -7,8 +7,11 @@ Deux façons de juger une latence, et il faut les deux :
 - par rapport à son **propre passé** : une latence qui triple reste sous le SLO
   pendant un moment, mais annonce la panne.
 
-Les seuils ci-dessous sont dimensionnés sur la mesure réelle de l'API (~45 ms par
-prédiction, cf. README) et se règlent par `SEUILS`.
+Les seuils ci-dessous sont dimensionnés sur la mesure réelle de l'API et se règlent
+par `SEUILS`. Depuis l'optimisation de l'inférence (docs/rapport_optimisation.md), une
+prédiction répond en ~5 ms (p95 ~6 ms) contre ~40 ms (p95 ~120 ms) auparavant : le SLO
+a été abaissé en conséquence, sans quoi une régression vers l'ancien chemin
+d'inférence passerait inaperçue.
 """
 
 import pandas as pd
@@ -16,7 +19,7 @@ import pandas as pd
 SEUILS = {
     "taux_erreur_serveur": 0.01,   # 1 % de 5xx
     "taux_erreur_client": 0.20,    # 20 % de 4xx : signale un appelant mal intégré
-    "latence_p95_ms": 500.0,       # SLO : 10× la latence nominale
+    "latence_p95_ms": 100.0,       # SLO : ~15× le p95 nominal (6 ms), sous l'ancien (120 ms)
     "facteur_degradation": 3.0,    # p95 récent / p95 de référence
 }
 
@@ -104,3 +107,22 @@ def erreurs_frequentes(predictions, limite=5):
     comptes = erreurs.groupby(["erreur_type", "erreur_message"]).size()
     return [{"type": t, "message": m[:160], "occurrences": int(n)}
             for (t, m), n in comptes.sort_values(ascending=False).head(limite).items()]
+
+
+def ressources(predictions):
+    """Occupation CPU et mémoire du processus de l'API, relevées à chaque prédiction.
+
+    Les journaux antérieurs à cette mesure n'ont pas les colonnes (ou les ont vides) :
+    on renvoie alors des valeurs NaN plutôt qu'une erreur.
+    """
+    vide = {"cpu_pct": percentiles([]), "memoire_mo_max": float("nan"), "mesures": 0}
+    if predictions.empty or "cpu_pct" not in predictions:
+        return vide
+    mesures = predictions.dropna(subset=["cpu_pct"])
+    if mesures.empty:
+        return vide
+    return {
+        "cpu_pct": percentiles(mesures["cpu_pct"]),
+        "memoire_mo_max": float(mesures["memoire_mo"].max()),
+        "mesures": int(len(mesures)),
+    }

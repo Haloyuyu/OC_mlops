@@ -357,7 +357,7 @@ def test_exploitation_detecte_une_latence_hors_slo():
 
 
 def test_exploitation_detecte_une_degradation_progressive():
-    latences = [40.0] * 80 + [300.0] * 20          # sous le SLO, mais ×7,5
+    latences = [5.0] * 80 + [40.0] * 20            # sous le SLO, mais ×8
     mesures = operations.analyser(_requetes([200] * 100, latences))
     assert mesures["degradation_latence"]["facteur"] > 3
     assert any("multipliée" in a for a in mesures["anomalies"])

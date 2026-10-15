@@ -101,6 +101,7 @@ def main():
     synthese = drift.synthese(resultats, derive_predictions)
     exploitation = operations.analyser(requetes)
     exploitation["erreurs_frequentes"] = operations.erreurs_frequentes(predictions)
+    exploitation["ressources"] = operations.ressources(predictions)
     volumetrie = storage.volumetrie(arguments.base)
 
     Path(arguments.rapport).parent.mkdir(parents=True, exist_ok=True)
@@ -123,6 +124,11 @@ def main():
           f"{exploitation['latences_ms']['p95']:.0f} ms")
     for anomalie in exploitation["anomalies"]:
         print(f"  · {anomalie}")
+    ressources = exploitation["ressources"]
+    if ressources["mesures"]:
+        print(f"Ressources   : CPU p50 {ressources['cpu_pct']['p50']:.0f} %, "
+              f"p95 {ressources['cpu_pct']['p95']:.0f} % (100 % = un cœur), "
+              f"mémoire max {ressources['memoire_mo_max']:.0f} Mo")
     print(f"Stockage     : {volumetrie['evenements']} événements, "
           f"{volumetrie['taille_base_mo']} Mo "
           f"({volumetrie['octets_par_prediction']} octets par prédiction)")

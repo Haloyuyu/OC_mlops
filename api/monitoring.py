@@ -5,8 +5,8 @@ de l'analyser plus tard sans parser de logs textuels, et de le transférer tel q
 depuis un hôte distant vers un poste d'analyse.
 
 Ce qui est enregistré : horodatage, identifiant de requête, route, statut HTTP,
-latences (requête complète et inférence seule), entrées du modèle, sortie du modèle,
-et l'erreur éventuelle. C'est le minimum pour analyser ensuite la dérive des données
+latences (requête complète et inférence seule), ressources du processus (CPU, mémoire),
+entrées du modèle, sortie du modèle, et l'erreur éventuelle. C'est le minimum pour analyser ensuite la dérive des données
 (entrées), la dérive des prédictions (sorties) et les incidents d'exploitation
 (taux d'erreur, latence).
 
@@ -31,9 +31,13 @@ impossibilité d'analyser plus tard la dérive d'une feature non retenue.
 import json
 import logging
 import os
+import threading
+import time
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+
+import psutil
 
 RACINE = Path(__file__).resolve().parent.parent
 DEFAULT_DIR = RACINE / "logs"
@@ -63,7 +67,7 @@ class ProductionLog:
 
     La date dans le nom du fichier assure la rotation quotidienne sans dépendance
     ni handler de logging à configurer ; le fichier est ouvert en ajout à chaque
-    événement (quelques dizaines de microsecondes, à comparer aux ~40 ms d'inférence).
+    événement (~0,3 ms pour une ligne de 16 Ko, à comparer aux ~5 ms d'une requête).
     """
 
     def __init__(self, dossier=None, actif=True, features=None):
@@ -79,6 +83,30 @@ class ProductionLog:
                 self.actif = False
                 logging.getLogger("api.monitoring").error(
                     "Journal de production désactivé : %s inutilisable (%s)", self.dossier, erreur)
+
+    _verrou = threading.Lock()
+
+    def _ajouter(self, octets):
+        """Ajoute une ligne au journal du jour en une seule écriture atomique.
+
+        Une ligne fait ~16 Ko : écrite par `open(..., "a").write`, elle part en
+        plusieurs appels système, et des requêtes simultanées (pool de threads de
+        FastAPI) entrelaçaient leurs morceaux — le test de charge à 16 clients
+        produisait 2 % de lignes illisibles, ignorées à l'ingestion. Le verrou
+        sérialise les threads ; `O_APPEND` + un unique `os.write` couvre plusieurs
+        processus (workers uvicorn) écrivant le même fichier — sous Linux, où POSIX
+        rend l'écriture en ajout atomique. Le CRT Windows l'émule sans cette garantie :
+        en local sous Windows, garder un seul worker.
+        """
+        with self._verrou:
+            fd = os.open(self.fichier_du_jour(),
+                         os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_BINARY", 0), 0o644)
+            try:
+                ecrits = os.write(fd, octets)
+                while ecrits < len(octets):   # écriture partielle (rare) : on complète
+                    ecrits += os.write(fd, octets[ecrits:])
+            finally:
+                os.close(fd)
 
     def fichier_du_jour(self, jour=None):
         return self.dossier / f"{PREFIXE}{jour or date.today().isoformat()}{SUFFIXE}"
@@ -96,8 +124,7 @@ class ProductionLog:
                          "entrees_tronquees": True}
         ligne = json.dumps(evenement, ensure_ascii=False, default=str)
         try:
-            with open(self.fichier_du_jour(), "a", encoding="utf-8") as f:
-                f.write(ligne + "\n")
+            self._ajouter((ligne + "\n").encode("utf-8"))
         except OSError as erreur:
             # idem : perdre le suivi est préférable à perdre le service
             self.actif = False
@@ -124,9 +151,48 @@ class ProductionLog:
         return supprimes
 
 
+_PROCESSUS = psutil.Process()
+FENETRE_CPU_S = 1.0
+_cpu = {"debut": time.monotonic(), "temps_cpu": sum(_PROCESSUS.cpu_times()[:2]), "pct": None}
+_cpu_verrou = threading.Lock()
+
+
+def _cpu_pct():
+    """Occupation CPU du processus, moyennée sur des fenêtres d'au moins une seconde.
+
+    Mesurer entre deux appels successifs (quelques ms) ne veut rien dire : l'horloge
+    CPU du système avance par pas de 10 à 16 ms, et la plupart des intervalles
+    vaudraient 0 %. On renvoie donc la moyenne de la dernière fenêtre close.
+    """
+    with _cpu_verrou:
+        maintenant = time.monotonic()
+        ecoule = maintenant - _cpu["debut"]
+        if ecoule >= FENETRE_CPU_S:
+            temps_cpu = sum(_PROCESSUS.cpu_times()[:2])          # user + system
+            _cpu["pct"] = round(100 * (temps_cpu - _cpu["temps_cpu"]) / ecoule, 1)
+            _cpu["debut"], _cpu["temps_cpu"] = maintenant, temps_cpu
+        return _cpu["pct"]
+
+
+def ressources_processus():
+    """CPU et mémoire du processus de l'API, au moment de l'appel.
+
+    `cpu_pct` : occupation CPU moyenne du processus sur la dernière fenêtre d'une
+    seconde (100 % = un cœur plein, 400 % = quatre cœurs), `None` tant que la première
+    fenêtre n'est pas close. C'est ce qui relie une latence dégradée à une saturation
+    CPU. Pas de mesure GPU : le modèle (arbres LightGBM) s'exécute uniquement sur CPU.
+    """
+    return {
+        "cpu_pct": _cpu_pct(),
+        "memoire_mo": round(_PROCESSUS.memory_info().rss / 2**20, 1),
+    }
+
+
 def evenement_prediction(entrees, sortie=None, erreur=None, statut=200,
-                         latence_ms=None, latence_modele_ms=None, modele=None):
+                         latence_ms=None, latence_modele_ms=None, modele=None,
+                         ressources=None):
     """Construit l'événement d'un appel à /predict (succès comme échec)."""
+    ressources = ressources or {}
     return {
         "evenement": "prediction",
         "route": "/predict",
@@ -134,6 +200,8 @@ def evenement_prediction(entrees, sortie=None, erreur=None, statut=200,
         "statut": statut,
         "latence_ms": None if latence_ms is None else round(latence_ms, 3),
         "latence_modele_ms": None if latence_modele_ms is None else round(latence_modele_ms, 3),
+        "cpu_pct": ressources.get("cpu_pct"),
+        "memoire_mo": ressources.get("memoire_mo"),
         "modele": modele,
         "entrees": entrees,
         "sortie": sortie,

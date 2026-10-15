@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS appels (
     erreur_type          TEXT,
     erreur_message       TEXT,
     entrees              TEXT,
+    cpu_pct              REAL,
+    memoire_mo           REAL,
     PRIMARY KEY (requete_id, evenement)
 );
 CREATE INDEX IF NOT EXISTS idx_appels_horodatage ON appels (horodatage);
@@ -53,8 +55,12 @@ COLONNES = [
     "requete_id", "evenement", "horodatage", "route", "methode", "statut",
     "latence_ms", "latence_modele_ms", "modele_nom", "modele_version", "seuil",
     "probabilite_defaut", "decision", "features_renseignees",
-    "erreur_type", "erreur_message", "entrees",
+    "erreur_type", "erreur_message", "entrees", "cpu_pct", "memoire_mo",
 ]
+
+# Colonnes ajoutées après la création des premières bases : une base existante est
+# complétée à l'ouverture plutôt que recréée, pour ne pas perdre l'historique.
+COLONNES_AJOUTEES = {"cpu_pct": "REAL", "memoire_mo": "REAL"}
 
 
 def connexion(base=BASE_DEFAUT):
@@ -63,6 +69,10 @@ def connexion(base=BASE_DEFAUT):
     base.parent.mkdir(parents=True, exist_ok=True)
     cnx = sqlite3.connect(base)
     cnx.executescript(SCHEMA)
+    existantes = {ligne[1] for ligne in cnx.execute("PRAGMA table_info(appels)")}
+    for nom, type_sql in COLONNES_AJOUTEES.items():
+        if nom not in existantes:
+            cnx.execute(f"ALTER TABLE appels ADD COLUMN {nom} {type_sql}")
     return cnx
 
 
@@ -90,6 +100,8 @@ def _aplatir(evenement):
         erreur.get("type"),
         erreur.get("message"),
         None if entrees is None else json.dumps(entrees, ensure_ascii=False),
+        evenement.get("cpu_pct"),
+        evenement.get("memoire_mo"),
     )
 
 
@@ -111,7 +123,8 @@ def ingerer_fichier(cnx, fichier):
             else:
                 illisibles += 1
     marques = ", ".join("?" * len(COLONNES))
-    cnx.executemany(f"INSERT OR REPLACE INTO appels VALUES ({marques})", lignes)
+    cnx.executemany(f"INSERT OR REPLACE INTO appels ({', '.join(COLONNES)}) VALUES ({marques})",
+                    lignes)
     cnx.commit()
     return len(lignes), illisibles
 

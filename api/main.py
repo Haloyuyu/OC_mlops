@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from api.interface import create_interface
 from api.monitoring import (ProductionLog, evenement_prediction, evenement_requete,
-                            nouvel_identifiant)
+                            nouvel_identifiant, ressources_processus)
 from api.scoring import OutOfBoundsValues, ScoringModel, UnknownFeatures, load_example_clients
 from api.security import API_KEY, HEADER_NAME, UI_USERNAME, log_key_status, require_api_key
 
@@ -153,7 +153,7 @@ def predict(client: Client, request: Request):
             entrees=client.features, statut=422,
             erreur={"type": type(error).__name__, "message": str(error)},
             latence_ms=(time.perf_counter() - debut) * 1000,
-            modele=_signature_modele(),
+            modele=_signature_modele(), ressources=ressources_processus(),
         )})
         raise HTTPException(status_code=422, detail={"message": str(error), cle_detail: detail})
 
@@ -161,7 +161,7 @@ def predict(client: Client, request: Request):
     production_log.record({**journal, **evenement_prediction(
         entrees=client.features, sortie=sortie, statut=200,
         latence_ms=latence_modele_ms, latence_modele_ms=latence_modele_ms,
-        modele=_signature_modele(),
+        modele=_signature_modele(), ressources=ressources_processus(),
     )})
     return sortie
 
