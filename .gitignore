@@ -9,3 +9,6 @@ mlartifacts/
 logs/
 monitoring/*.db
 rapports/
+.coverage
+coverage.xml
+htmlcov/

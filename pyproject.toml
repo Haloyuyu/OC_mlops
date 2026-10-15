@@ -36,3 +36,14 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+# Couverture des tests : le code déployé (api/) et le suivi de production (monitoring/).
+# Les scripts/ sont des outils en ligne de commande lancés à la main (simulation de
+# trafic, mesures, export du modèle) : ils ne font pas partie du service testé.
+[tool.coverage.run]
+source = ["api", "monitoring"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 85
+show_missing = true

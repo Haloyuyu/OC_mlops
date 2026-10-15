@@ -28,17 +28,33 @@ jobs:
       - name: Installation des dépendances
         run: pip install -r requirements-dev.txt
 
-      - name: Tests (modèle + API)
+      # Couverture mesurée sur api/ et monitoring/ (cf. pyproject.toml) : sous 85 %,
+      # le job échoue et l'image n'est pas construite.
+      - name: Tests (modèle + API) et couverture
         env:
           GRADIO_ANALYTICS_ENABLED: "False"
-        run: python -m pytest tests -v --junitxml=rapport-tests.xml
+        run: |
+          python -m pytest tests -v --junitxml=rapport-tests.xml \
+            --cov --cov-report=term --cov-report=xml:coverage.xml --cov-report=html:htmlcov
 
-      - name: Publication du rapport de tests
+      - name: Couverture dans le résumé du job
+        if: always()
+        run: |
+          {
+            echo "## Couverture des tests"
+            echo ""
+            python -m coverage report --format=markdown
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publication des rapports de tests et de couverture
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: rapport-tests
-          path: rapport-tests.xml
+          path: |
+            rapport-tests.xml
+            coverage.xml
+            htmlcov/
 
   build:
     name: Construction de l'image Docker

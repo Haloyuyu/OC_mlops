@@ -176,8 +176,23 @@ python scripts/load_test.py --label booster --journaux logs
 ### Tests
 
 ```bash
-pytest
+pytest                                            # tests seuls
+pytest --cov --cov-report=html:htmlcov            # + couverture (rapport dans htmlcov/index.html)
 ```
+
+**Couverture : 91 %** (lignes et branches) sur `api/` et `monitoring/`, le code déployé et
+le suivi de production. Les `scripts/` (simulation de trafic, mesures, export du modèle)
+sont des outils lancés à la main et ne sont pas mesurés. Le seuil est fixé à **85 %**
+(`pyproject.toml`). En CI, une couverture inférieure fait échouer le job de tests, donc
+bloque la construction de l'image. Le tableau de couverture est publié dans le résumé
+du job, et les rapports HTML et XML en artefacts.
+
+| Module | Couverture |
+|---|---|
+| `api/main.py`, `api/scoring.py` | 100 % |
+| `api/monitoring.py`, `api/security.py` | 92 % |
+| `monitoring/` (dérive, exploitation, stockage, rapport) | 87 à 94 % |
+| `api/interface.py` (callbacks de l'interface Gradio) | 60 % |
 
 122 tests : chargement du modèle champion, cohérence de la décision avec le seuil métier,
 valeurs manquantes, valeurs aberrantes, types incorrects, routes HTTP, authentification
