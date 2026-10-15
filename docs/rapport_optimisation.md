@@ -387,7 +387,7 @@ Latence /predict (50 appels) -> p50 2.8 ms, p95 3.0 ms (max toléré 100 ms)
 Ce temps de réponse est mesuré de bout en bout, vu d'un client qui ouvre une nouvelle
 connexion à chaque appel. Il est inférieur à la mesure locale sous Windows (p50 de
 4,7 ms avec connexion persistante), car l'ouverture d'une connexion TCP locale coûte
-beaucoup moins cher sous Linux. Il est aussi **40 fois sous le seuil** de 100 ms. Avec
+beaucoup moins cher sous Linux. Il est aussi **33 fois sous le seuil** de 100 ms. Avec
 une seule vCPU, la limite de ressources de la production n'a donc pas dégradé le gain
 mesuré en développement.
 
