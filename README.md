@@ -19,6 +19,9 @@ servi avec MLFlow.
 | `monitoring/` | Stockage des données de production et analyse (dérive, exploitation) |
 | `scripts/simulate_traffic.py` | Génération de trafic de production, nominal ou dérivé |
 | `scripts/analyze_production.py` | Analyse automatique : dérive, anomalies, rapport HTML |
+| `docs/rapport_optimisation.md` | Rapport d'optimisation de l'inférence : goulots, tests, résultats, configuration finale |
+| `scripts/profile_inference.py`, `benchmark_inference.py`, `load_test.py` | Profilage cProfile, banc d'essai des variantes (vitesse, précision, biais), test de charge HTTP |
+| `docs/optimisation/` | Résultats bruts des mesures (profils, banc d'essai, tests de charge) |
 | `.env.example` | Modèle de configuration locale (clé d'API), copier en `.env` |
 | `tests/` | Tests unitaires (modèle, logique de scoring) et d'intégration (routes HTTP) |
 | `Dockerfile` | Image Docker de l'API |
@@ -139,12 +142,36 @@ champion et les 795 features :
 
 | | Mesure |
 |---|---|
-| Mémoire (RSS), stable après 150 requêtes | ~260 Mo |
-| Latence moyenne par prédiction | ~45 ms |
+| Mémoire (RSS) | ~325 Mo |
+| Temps de réponse de `/predict` (1 client) | p50 4,7 ms, p95 6,0 ms |
+| Inférence seule | ~0,5 ms |
+| Débit (1 worker, 16 clients simultanés) | ~270 appels/s |
 | Image Docker publiée (compressée sur le registry) | 240 Mo |
 
 Le conteneur est lancé avec `--memory=1g --cpus=1`, et l'étape de déploiement refuse un hôte
 offrant moins de 1 Go de RAM disponible ou 2 Go de disque.
+
+### Optimisation de l'inférence
+
+Le temps de réponse est passé de 37 ms (p95 121 ms) à 4,7 ms (p95 6 ms) **sans changer le
+modèle ni une seule décision** : le profilage a montré que 99 % du temps partait dans la
+validation de schéma MLflow et pandas, et non dans les arbres LightGBM. L'API appelle
+désormais directement le Booster LightGBM sur un vecteur numpy. ONNX Runtime et la
+quantification ont été évalués puis écartés. Détails, mesures et justification de la
+configuration : [`docs/rapport_optimisation.md`](docs/rapport_optimisation.md).
+
+| Variable d'environnement | Défaut | Rôle |
+|---|---|---|
+| `MODEL_BACKEND` | `booster` | `booster` (optimisé) ou `pyfunc` (modèle MLflow tel qu'au registry, référence et retour arrière) |
+| `LGBM_NUM_THREADS` | `1` | Threads OpenMP par prédiction |
+| `WEB_CONCURRENCY` | `1` | Workers uvicorn ; un par vCPU alloué (Linux uniquement au-delà de 1) |
+
+```bash
+pip install -r requirements-optimisation.txt     # + onnx, onnxruntime, onnxmltools
+python scripts/profile_inference.py --backend pyfunc
+python scripts/benchmark_inference.py --clients 20000
+python scripts/load_test.py --label booster --journaux logs
+```
 
 ### Tests
 
@@ -152,12 +179,14 @@ offrant moins de 1 Go de RAM disponible ou 2 Go de disque.
 pytest
 ```
 
-107 tests : chargement du modèle champion, cohérence de la décision avec le seuil métier,
+122 tests : chargement du modèle champion, cohérence de la décision avec le seuil métier,
 valeurs manquantes, valeurs aberrantes, types incorrects, routes HTTP, authentification
 (clé absente, fausse, tronquée ; `/health` public ; connexion Gradio), documentation
 OpenAPI, non-rechargement du modèle entre deux requêtes, journalisation de production
 (entrées, sorties, latences, erreurs, secrets jamais journalisés), ingestion SQLite
-idempotente, PSI et Kolmogorov-Smirnov, seuils d'exploitation et rapport HTML.
+idempotente, PSI et Kolmogorov-Smirnov, seuils d'exploitation et rapport HTML,
+non-régression de l'inférence optimisée (sorties identiques au modèle du registry),
+intégrité du journal sous écritures concurrentes, ressources CPU et mémoire.
 
 ## Suivi des données de production (dérive et anomalies)
 
@@ -175,7 +204,7 @@ même modèle de données, même SQL, aucun serveur à administrer. L'ingestion 
 idempotente (clé `requete_id` + `evenement`) : on peut la rejouer sans précaution.
 
 Chaque appel produit deux événements : un événement **`prediction`** (entrées du
-modèle, sortie, latence d'inférence, erreur éventuelle) et un événement
+modèle, sortie, latence d'inférence, CPU et mémoire du processus, erreur éventuelle) et un événement
 **`requete`** (route, statut HTTP, latence totale), y compris pour les `401` et les
 `422`. C'est ce qui permet d'analyser séparément la dérive du modèle et la santé du
 service.
@@ -225,7 +254,7 @@ le rapport pour savoir s'il faut regarder.
 | Feature qui cesse d'être renseignée | Écart du taux de valeurs manquantes > 10 points |
 | Dérive des prédictions | PSI sur les scores + écart du taux de refus |
 | Taux d'erreur | 5xx > 1 %, 4xx > 20 % |
-| Latence anormale | p95 > 500 ms (objectif de service) **ou** p95 récent > 3 × p95 précédent |
+| Latence anormale | p95 > 100 ms (objectif de service) **ou** p95 récent > 3 × p95 précédent |
 
 Deux indicateurs plutôt qu'un seul : KS devient significatif pour des écarts
 minuscules dès que le volume monte, et le PSI seul ne dit rien de la fiabilité de
@@ -290,7 +319,8 @@ le même résultat.
 3. **Déploiement** (si l'image est publiée) : environnement `production` **simulé** sur
    le runner, qui vérifie d'abord les ressources de l'hôte, tire l'image depuis le
    registry, lance le conteneur et contrôle `/health`, `/predict` et `/ui`
-   (`scripts/smoke_test.py`).
+   (`scripts/smoke_test.py`), ainsi que le **temps de réponse** : un p95 de `/predict`
+   supérieur à 100 ms fait échouer le déploiement.
 
 Sur une pull request, les tests et la construction de l'image s'exécutent, sans
 publication ni déploiement.
